@@ -1254,7 +1254,7 @@ function exportData() {
  * Handle import file selection
  * @param {Event} event - File input change event
  */
-function handleImportFile(event) {
+async function handleImportFile(event) {
     const file = event.target.files[0];
     if (!file) return;
     
@@ -1267,7 +1267,7 @@ function handleImportFile(event) {
     
     const reader = new FileReader();
     
-    reader.onload = function(e) {
+    reader.onload = async function(e) {
         try {
             const importedData = JSON.parse(e.target.result);
             
@@ -1287,6 +1287,7 @@ function handleImportFile(event) {
                 // Check for duplicate IDs and regenerate if needed
                 const existingIds = new Set(contactsData.map(c => c.id));
                 
+                const contactsToImport = [];
                 importedData.contacts.forEach(contact => {
                     // Regenerate ID if it already exists
                     if (existingIds.has(contact.id)) {
@@ -1302,14 +1303,81 @@ function handleImportFile(event) {
                         });
                     }
                     
-                    contactsData.push(contact);
+                    contactsToImport.push(contact);
                 });
                 
-                // Save and update UI
-                saveContactsData();
-                renderContacts();
-                
-                alert(`${contactCount} contact${contactCount !== 1 ? 'en' : ''} geïmporteerd!`);
+                if (isSupabaseConfigured() && currentUser) {
+                    // Save to Supabase
+                    let successCount = 0;
+                    let failCount = 0;
+                    
+                    for (const contact of contactsToImport) {
+                        try {
+                            // Save contact to Supabase
+                            const { error: contactError } = await supabase
+                                .from('contacts')
+                                .insert({
+                                    id: contact.id,
+                                    user_id: currentUser.id,
+                                    name: contact.name,
+                                    birthday: contact.birthday || null,
+                                    frequency: contact.frequency || 30,
+                                    notes: contact.notes || null,
+                                    custom_fields: contact.customFields || []
+                                });
+                            
+                            if (contactError) throw contactError;
+                            
+                            // Save interactions if any
+                            if (contact.interactions && contact.interactions.length > 0) {
+                                const interactions = contact.interactions.map(i => ({
+                                    id: i.id,
+                                    contact_id: contact.id,
+                                    user_id: currentUser.id,
+                                    date: i.date,
+                                    type: i.type,
+                                    notes: i.notes || null,
+                                    planned: i.planned || false
+                                }));
+                                
+                                const { error: interactionsError } = await supabase
+                                    .from('interactions')
+                                    .insert(interactions);
+                                
+                                if (interactionsError) throw interactionsError;
+                            }
+                            
+                            // Add to local array
+                            contactsData.push(contact);
+                            successCount++;
+                            
+                        } catch (error) {
+                            console.error(`Failed to import contact ${contact.name}:`, error);
+                            failCount++;
+                        }
+                    }
+                    
+                    // Update UI
+                    renderContacts();
+                    
+                    if (failCount > 0) {
+                        alert(`Import voltooid!\n\nSuccesvol: ${successCount}\nMislukt: ${failCount}`);
+                    } else {
+                        alert(`${successCount} contact${successCount !== 1 ? 'en' : ''} succesvol geïmporteerd!`);
+                    }
+                    
+                } else {
+                    // Fallback to localStorage
+                    contactsToImport.forEach(contact => {
+                        contactsData.push(contact);
+                    });
+                    
+                    // Save and update UI
+                    saveContactsData();
+                    renderContacts();
+                    
+                    alert(`${contactCount} contact${contactCount !== 1 ? 'en' : ''} geïmporteerd!`);
+                }
             }
         } catch (error) {
             console.error('Import error:', error);
