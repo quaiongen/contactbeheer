@@ -1,0 +1,200 @@
+/* Main Styles */
+body {
+    background-color: #f8f9fa;
+    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+}
+
+/* Modal Styles */
+.modal-dialog {
+    margin: 1rem auto;
+    max-height: calc(100vh - 2rem);
+    display: flex;
+    flex-direction: column;
+}
+
+.modal-content {
+    max-height: calc(100vh - 2rem);
+    display: flex;
+    flex-direction: column;
+}
+
+.modal-body {
+    overflow-y: auto;
+    max-height: calc(100vh - 12rem); /* Account for header, footer, and margins */
+    padding-bottom: 1rem;
+}
+
+/* Contact Card Styles */
+.contact-card {
+    border-radius: 10px;
+    box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
+    transition: transform 0.3s ease, box-shadow 0.3s ease;
+    margin-bottom: 1.5rem;
+    overflow: hidden;
+}
+
+.contact-card:hover {
+    transform: translateY(-5px);
+    box-shadow: 0 8px 16px rgba(0, 0, 0, 0.2);
+}
+
+.contact-card .card-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    background-color: #f8f9fa;
+    border-bottom: 1px solid rgba(0, 0, 0, 0.125);
+    padding: 0.75rem 1.25rem;
+}
+
+.contact-card .contact-name {
+    font-weight: 600;
+    margin-bottom: 0;
+}
+
+.contact-info {
+    padding: 1rem;
+}
+
+/* Timer Styles */
+.progress {
+    height: 10px;
+    margin-bottom: 0.5rem;
+}
+
+.progress-container {
+    margin-top: 1rem;
+}
+
+.timer-indicator {
+    display: flex;
+    justify-content: space-between;
+    margin-bottom: 0.25rem;
+}
+
+.timer-text {
+    font-size: 0.9rem;
+    color: #6c757d;
+}
+
+/* Status colors */
+.status-good {
+    background-color: #28a745;
+}
+
+.status-warning {
+    background-color: #ffc107;
+}
+
+.status-danger {
+    background-color: #dc3545;
+}
+
+/* Custom Fields */
+.custom-field-row {
+    display: flex;
+    gap: 10px;
+    margin-bottom: 10px;
+}
+
+.custom-field-row .form-control {
+    flex: 1;
+}
+
+.custom-field-row .btn-remove-field {
+    flex-shrink: 0;
+}
+
+/* Interaction history */
+.interaction-item {
+    border-left: 3px solid #007bff;
+    padding: 0.5rem 0.5rem 0.5rem 1rem;
+    margin-bottom: 1rem;
+    background-color: #f8f9fa;
+}
+
+.interaction-date {
+    font-weight: 600;
+    color: #495057;
+}
+
+.interaction-type {
+    color: #6c757d;
+    font-size: 0.9rem;
+}
+
+.interaction-type-pill {
+    font-size: 0.8rem;
+    padding: 0.2rem 0.5rem;
+    border-radius: 10px;
+    background-color: #e9ecef;
+    color: #495057;
+    margin-left: 0.5rem;
+}
+
+/* Animation for new elements */
+@keyframes fadeIn {
+    from {
+        opacity: 0;
+        transform: translateY(20px);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+.fade-in {
+    animation: fadeIn 0.5s ease-out forwards;
+}
+
+/* Responsive adjustments */
+@media (max-width: 768px) {
+    .contact-card {
+        margin-bottom: 1rem;
+    }
+    
+    .contact-card:hover {
+        transform: none;
+    }
+}
+
+/* Notification dot */
+.notification-dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background-color: #dc3545;
+    position: absolute;
+    top: 5px;
+    right: 5px;
+}
+
+/* Last contact indicator */
+.last-contact {
+    font-size: 0.85rem;
+    display: block;
+    margin-top: 0.5rem;
+    color: #6c757d;
+}
+
+/* Contact frequency indicator */
+.contact-frequency {
+    font-size: 0.85rem;
+    color: #6c757d;
+}
+
+/* Button style override */
+.action-btn {
+    border-radius: 50%;
+    width: 40px;
+    height: 40px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    box-shadow: 0 2px 5px rgba(0, 0, 0, 0.1);
+}
+
+.action-btn:hover {
+    transform: scale(1.1);
+}
