@@ -1284,22 +1284,18 @@ async function handleImportFile(event) {
                           `- "Annuleren" = Annuleren`;
             
             if (confirm(message)) {
-                // Check for duplicate IDs and regenerate if needed
-                const existingIds = new Set(contactsData.map(c => c.id));
-                
+                // ALWAYS regenerate IDs for imported contacts to ensure uniqueness per user
                 const contactsToImport = [];
                 importedData.contacts.forEach(contact => {
-                    // Regenerate ID if it already exists
-                    if (existingIds.has(contact.id)) {
-                        contact.id = generateUniqueId();
-                    }
+                    // Generate new unique ID for this contact
+                    const newContactId = generateUniqueId();
+                    const oldContactId = contact.id;
+                    contact.id = newContactId;
                     
-                    // Also regenerate interaction IDs if needed
+                    // Regenerate ALL interaction IDs with new contact reference
                     if (contact.interactions) {
                         contact.interactions.forEach(interaction => {
-                            if (!interaction.id) {
-                                interaction.id = generateUniqueId();
-                            }
+                            interaction.id = generateUniqueId();
                         });
                     }
                     
