@@ -3,9 +3,6 @@
  * A web application for managing contacts and tracking interaction frequency
  */
 
-// Create alias for supabaseClient to avoid naming conflicts with CDN
-const supabase = supabaseClient;
-
 // Data structure for the application
 let contactsData = [];
 
@@ -502,7 +499,7 @@ async function saveContact() {
             
             if (contactId) {
                 // Update existing contact
-                const { error } = await supabase
+                const { error } = await supabaseClient
                     .from('contacts')
                     .update(contactData)
                     .eq('id', contactId)
@@ -525,7 +522,7 @@ async function saveContact() {
             } else {
                 // Create new contact
                 const newId = generateUniqueId();
-                const { error } = await supabase
+                const { error } = await supabaseClient
                     .from('contacts')
                     .insert({
                         id: newId,
@@ -680,7 +677,7 @@ async function saveInteraction() {
             
             if (interactionId) {
                 // Update existing interaction
-                const { error } = await supabase
+                const { error } = await supabaseClient
                     .from('interactions')
                     .update(interactionData)
                     .eq('id', interactionId)
@@ -704,7 +701,7 @@ async function saveInteraction() {
                 }
             } else {
                 // Create new interaction
-                const { error } = await supabase
+                const { error } = await supabaseClient
                     .from('interactions')
                     .insert({
                         id: newInteractionId,
@@ -1040,7 +1037,7 @@ async function deleteInteraction(contactId, interactionId) {
     try {
         if (isSupabaseConfigured() && currentUser) {
             // Delete from Supabase
-            const { error } = await supabase
+            const { error } = await supabaseClient
                 .from('interactions')
                 .delete()
                 .eq('id', interactionId)
@@ -1134,7 +1131,7 @@ async function deleteContact(contactId) {
     try {
         if (isSupabaseConfigured() && currentUser) {
             // Delete from Supabase (interactions will be deleted automatically due to CASCADE)
-            const { error } = await supabase
+            const { error } = await supabaseClient
                 .from('contacts')
                 .delete()
                 .eq('id', contactId)
@@ -1313,7 +1310,7 @@ async function handleImportFile(event) {
                     for (const contact of contactsToImport) {
                         try {
                             // Save contact to Supabase
-                            const { error: contactError } = await supabase
+                            const { error: contactError } = await supabaseClient
                                 .from('contacts')
                                 .insert({
                                     id: contact.id,
@@ -1339,7 +1336,7 @@ async function handleImportFile(event) {
                                     planned: i.planned || false
                                 }));
                                 
-                                const { error: interactionsError } = await supabase
+                                const { error: interactionsError } = await supabaseClient
                                     .from('interactions')
                                     .insert(interactions);
                                 
@@ -1417,7 +1414,7 @@ async function initAuth() {
     setupAuthListeners();
     
     // Check for existing session
-    const { data: { session } } = await supabase.auth.getSession();
+    const { data: { session } } = await supabaseClient.auth.getSession();
     
     if (session) {
         currentUser = session.user;
@@ -1428,7 +1425,7 @@ async function initAuth() {
     }
     
     // Listen for auth changes
-    supabase.auth.onAuthStateChange((event, session) => {
+    supabaseClient.auth.onAuthStateChange((event, session) => {
         if (event === 'SIGNED_IN' && session) {
             currentUser = session.user;
             onAuthStateChange(true);
@@ -1477,7 +1474,7 @@ async function handleLogin() {
     hideAuthMessages();
     
     try {
-        const { data, error } = await supabase.auth.signInWithPassword({
+        const { data, error } = await supabaseClient.auth.signInWithPassword({
             email,
             password
         });
@@ -1512,7 +1509,7 @@ async function handleRegister() {
     }
     
     try {
-        const { data, error} = await supabase.auth.signUp({
+        const { data, error} = await supabaseClient.auth.signUp({
             email,
             password
         });
@@ -1536,7 +1533,7 @@ async function handleRegister() {
  */
 async function handleLogout() {
     try {
-        const { error } = await supabase.auth.signOut();
+        const { error } = await supabaseClient.auth.signOut();
         if (error) throw error;
         
         // Clear local data
@@ -1560,7 +1557,7 @@ async function handleForgotPassword() {
     if (!email) return;
     
     try {
-        const { error } = await supabase.auth.resetPasswordForEmail(email, {
+        const { error } = await supabaseClient.auth.resetPasswordForEmail(email, {
             redirectTo: window.location.origin
         });
         
@@ -1676,7 +1673,7 @@ async function migrateLocalStorageToSupabase(contacts) {
         for (const contact of contacts) {
             try {
                 // Save contact to Supabase
-                const { error: contactError } = await supabase
+                const { error: contactError } = await supabaseClient
                     .from('contacts')
                     .insert({
                         id: contact.id,
@@ -1702,7 +1699,7 @@ async function migrateLocalStorageToSupabase(contacts) {
                         planned: i.planned || false
                     }));
                     
-                    const { error: interactionsError } = await supabase
+                    const { error: interactionsError } = await supabaseClient
                         .from('interactions')
                         .insert(interactions);
                     
@@ -1742,7 +1739,7 @@ async function loadDataFromSupabase() {
     
     try {
         // Load contacts
-        const { data: contacts, error: contactsError } = await supabase
+        const { data: contacts, error: contactsError } = await supabaseClient
             .from('contacts')
             .select('*')
             .eq('user_id', currentUser.id);
@@ -1750,7 +1747,7 @@ async function loadDataFromSupabase() {
         if (contactsError) throw contactsError;
         
         // Load all interactions
-        const { data: interactions, error: interactionsError } = await supabase
+        const { data: interactions, error: interactionsError } = await supabaseClient
             .from('interactions')
             .select('*')
             .eq('user_id', currentUser.id);
