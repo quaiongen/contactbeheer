@@ -3,6 +3,9 @@
  * A web application for managing contacts and tracking interaction frequency
  */
 
+// Create alias for supabaseClient to avoid naming conflicts with CDN
+const supabase = supabaseClient;
+
 // Data structure for the application
 let contactsData = [];
 

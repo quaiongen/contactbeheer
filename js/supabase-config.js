@@ -16,13 +16,13 @@
 const SUPABASE_URL = 'https://ddifqouirbnmozaxkxwy.supabase.co'; // Bijvoorbeeld: https://xxxxxxxxxxxx.supabase.co
 const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImRkaWZxb3VpcmJubW96YXhreHd5Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjI3Nzg5MjMsImV4cCI6MjA3ODM1NDkyM30.ct2haiAyViMJoR7SfxRQu-V_IoQBRERphYiKfoVKb2A'; // Je anon/public key
 
-// Initialize Supabase client
-let supabase = null;
+// Initialize Supabase client (renamed to avoid conflict with global supabase from CDN)
+let supabaseClient = null;
 
 // Check if credentials are configured
 if (SUPABASE_URL !== 'YOUR_SUPABASE_URL' && SUPABASE_ANON_KEY !== 'YOUR_SUPABASE_ANON_KEY') {
     try {
-        supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+        supabaseClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
         console.log('Supabase client initialized successfully');
     } catch (error) {
         console.error('Error initializing Supabase:', error);
@@ -37,7 +37,7 @@ if (SUPABASE_URL !== 'YOUR_SUPABASE_URL' && SUPABASE_ANON_KEY !== 'YOUR_SUPABASE
  * @returns {boolean} - True if Supabase is ready
  */
 function isSupabaseConfigured() {
-    return supabase !== null;
+    return supabaseClient !== null;
 }
 
 /**
@@ -45,5 +45,5 @@ function isSupabaseConfigured() {
  * @returns {Object|null} - Supabase client or null if not configured
  */
 function getSupabaseClient() {
-    return supabase;
+    return supabaseClient;
 }
