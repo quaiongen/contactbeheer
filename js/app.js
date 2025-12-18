@@ -5,6 +5,7 @@
 
 // Data structure for the application
 let contactsData = [];
+let categoriesData = [];
 
 // DOM Elements
 const contactsContainer = document.getElementById('contacts-container');
@@ -20,15 +21,23 @@ const editContactBtn = document.getElementById('edit-contact-btn');
 const exportDataBtn = document.getElementById('export-data-btn');
 const importDataBtn = document.getElementById('import-data-btn');
 const importFileInput = document.getElementById('import-file-input');
+const manageCategoriesBtn = document.getElementById('manage-categories-btn');
+const categoryForm = document.getElementById('category-form');
+const categoriesList = document.getElementById('categories-list');
+const contactCategorySelect = document.getElementById('contact-category');
 
 // Bootstrap Modal instances
 let contactModal;
 let interactionModal;
 let detailsModal;
 let authModal;
+let categoriesModal;
 
 // Current user
 let currentUser = null;
+
+// Current sort method
+let currentSortMethod = 'urgency';
 
 // Initialize the application
 document.addEventListener('DOMContentLoaded', function() {
@@ -36,9 +45,11 @@ document.addEventListener('DOMContentLoaded', function() {
     contactModal = new bootstrap.Modal(document.getElementById('contact-modal'));
     interactionModal = new bootstrap.Modal(document.getElementById('interaction-modal'));
     detailsModal = new bootstrap.Modal(document.getElementById('details-modal'));
+    categoriesModal = new bootstrap.Modal(document.getElementById('categories-modal'));
     
     // Load data from localStorage
     loadContactsData();
+    loadCategoriesData();
     
     // Render contacts
     renderContacts();
@@ -64,6 +75,16 @@ function loadContactsData() {
 }
 
 /**
+ * Load categories data from localStorage
+ */
+function loadCategoriesData() {
+    const savedData = localStorage.getItem('categoriesData');
+    if (savedData) {
+        categoriesData = JSON.parse(savedData);
+    }
+}
+
+/**
  * Save contacts data to localStorage (legacy - only used as backup)
  */
 function saveContactsData() {
@@ -74,14 +95,56 @@ function saveContactsData() {
 }
 
 /**
+ * Save categories data to localStorage
+ */
+function saveCategoriesData() {
+    if (!isSupabaseConfigured() || !currentUser) {
+        localStorage.setItem('categoriesData', JSON.stringify(categoriesData));
+    }
+}
+
+/**
  * Set up event listeners for user interactions
  */
 function setupEventListeners() {
     // Add new contact button
     addContactBtn.addEventListener('click', function() {
         resetContactForm();
+        populateCategorySelect();
         document.getElementById('modal-title').textContent = 'Contact Toevoegen';
         contactModal.show();
+    });
+
+    // Manage categories button
+    if (manageCategoriesBtn) {
+        manageCategoriesBtn.addEventListener('click', function() {
+            renderCategoriesList();
+            categoriesModal.show();
+        });
+    }
+
+    // Category form submit
+    if (categoryForm) {
+        categoryForm.addEventListener('submit', function(e) {
+            e.preventDefault();
+            saveCategory();
+        });
+    }
+
+    // Color picker interaction
+    const colorOptions = document.querySelectorAll('.color-option');
+    colorOptions.forEach(option => {
+        option.addEventListener('click', function() {
+            // Remove selected class from all
+            colorOptions.forEach(opt => opt.classList.remove('selected'));
+            // Add to clicked
+            this.classList.add('selected');
+            // Update hidden input and preview
+            const color = this.getAttribute('data-color');
+            document.getElementById('category-color').value = color;
+            document.getElementById('selected-color-preview').style.backgroundColor = color;
+            // Close dropdown (optional, maybe keep open)
+        });
     });
     
     // Save contact button
@@ -122,6 +185,15 @@ function setupEventListeners() {
     
     // Import file input change
     importFileInput.addEventListener('change', handleImportFile);
+    
+    // Sort contacts dropdown
+    const sortSelect = document.getElementById('sort-contacts');
+    if (sortSelect) {
+        sortSelect.addEventListener('change', function() {
+            currentSortMethod = this.value;
+            renderContacts();
+        });
+    }
 }
 
 /**
@@ -139,18 +211,77 @@ function renderContacts() {
         noContactsMessage.style.display = 'none';
     }
     
-    // Sort contacts by urgency (those who need contact soonest first)
-    contactsData.sort((a, b) => {
-        const aPercentage = calculateTimePercentage(a);
-        const bPercentage = calculateTimePercentage(b);
-        return bPercentage - aPercentage;
-    });
+    // Sort contacts based on current method
+    if (currentSortMethod === 'planned') {
+        contactsData.sort((a, b) => {
+            // Check for future planned interactions
+            const aPlanned = getNextFuturePlannedInteraction(a);
+            const bPlanned = getNextFuturePlannedInteraction(b);
+            
+            // If both have planned interactions, sort by date (earliest first)
+            if (aPlanned && bPlanned) {
+                return new Date(aPlanned.date) - new Date(bPlanned.date);
+            }
+            
+            // If only a has planned interaction, it comes first
+            if (aPlanned) return -1;
+            
+            // If only b has planned interaction, it comes first
+            if (bPlanned) return 1;
+            
+            // If neither has planned interaction, sort by urgency (default fallback)
+            const aPercentage = calculateTimePercentage(a);
+            const bPercentage = calculateTimePercentage(b);
+            return bPercentage - aPercentage;
+        });
+    } else {
+        // Default: Sort by urgency (those who need contact soonest first)
+        contactsData.sort((a, b) => {
+            const aPercentage = calculateTimePercentage(a);
+            const bPercentage = calculateTimePercentage(b);
+            return bPercentage - aPercentage;
+        });
+    }
     
     // Create and append contact cards
     contactsData.forEach(contact => {
         const contactCard = createContactCard(contact);
         contactsContainer.appendChild(contactCard);
     });
+}
+
+/**
+ * Get category by ID
+ * @param {string} id - Category ID
+ * @returns {Object|null} - Category object or null
+ */
+function getCategoryById(id) {
+    return categoriesData.find(c => c.id === id) || null;
+}
+
+/**
+ * Get the next future planned interaction for a contact
+ * @param {Object} contact - The contact data
+ * @returns {Object|null} - The next planned interaction or null
+ */
+function getNextFuturePlannedInteraction(contact) {
+    if (!contact.interactions) return null;
+    
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    
+    const futurePlanned = contact.interactions.filter(i => {
+        if (!i.planned) return false;
+        const date = new Date(i.date);
+        return date >= today;
+    });
+    
+    if (futurePlanned.length === 0) return null;
+    
+    // Sort by date ascending
+    futurePlanned.sort((a, b) => new Date(a.date) - new Date(b.date));
+    
+    return futurePlanned[0];
 }
 
 /**
@@ -163,7 +294,15 @@ function createContactCard(contact) {
     col.className = 'col-md-4 col-lg-3 fade-in';
     
     // Check for upcoming planned interactions
-    const plannedInteractions = contact.interactions ? contact.interactions.filter(i => i.planned) : [];
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    
+    const plannedInteractions = contact.interactions ? contact.interactions.filter(i => {
+        if (!i.planned) return false;
+        const date = new Date(i.date);
+        return date >= today;
+    }) : [];
+    
     const hasPlannedInteraction = plannedInteractions.length > 0;
     
     let nextPlannedInteraction;
@@ -177,8 +316,6 @@ function createContactCard(contact) {
         daysUntilPlanned = calculateDaysUntilDate(nextPlannedInteraction.date);
         
         // Calculate percentage for progress bar (closer to date = higher percentage)
-        const today = new Date();
-        today.setHours(0, 0, 0, 0);
         const plannedDate = new Date(nextPlannedInteraction.date);
         const originalDateSet = new Date(plannedDate);
         originalDateSet.setDate(originalDateSet.getDate() - 30); // Assume planned 30 days in advance
@@ -194,16 +331,23 @@ function createContactCard(contact) {
     const percentage = calculateTimePercentage(contact);
     const contactStatus = getContactStatus(percentage);
     
+    // Get category info
+    const category = contact.categoryId ? getCategoryById(contact.categoryId) : null;
+    const categoryColor = category ? category.color : 'transparent';
+    const categoryName = category ? category.name : '';
+
     // Create card HTML structure
     const cardHtml = `
-        <div class="card contact-card">
-            <div class="card-header">
-                <h5 class="contact-name">${contact.name}</h5>
+        <div class="card contact-card" style="${category ? `border-top: 5px solid ${categoryColor};` : ''}">
+            <div class="card-header d-flex justify-content-between align-items-center bg-white">
+                <h5 class="contact-name m-0">${contact.name}</h5>
                 <button class="btn btn-sm btn-outline-primary action-btn view-details-btn" data-id="${contact.id}">
                     <i class="bi bi-eye"></i>
                 </button>
             </div>
             <div class="card-body">
+                ${category ? `<span class="badge mb-2" style="background-color: ${categoryColor}">${categoryName}</span>` : ''}
+                <div class="contact-info">
                 <div class="contact-info">
                     ${contact.birthday ? `<p><i class="bi bi-calendar-heart"></i> ${formatDate(contact.birthday)}</p>` : ''}
                     
@@ -221,7 +365,7 @@ function createContactCard(contact) {
                     <div class="progress-container mt-2">
                         <div class="timer-indicator">
                             <span class="timer-text">
-                                <i class="bi bi-calendar-check"></i> Afspraak: ${daysUntilPlanned <= 0 ? 'Vandaag' : `Over ${daysUntilPlanned} dagen`}
+                                <i class="bi bi-calendar-check"></i> Afspraak: ${formatDaysUntilLabel(daysUntilPlanned)}
                             </span>
                             <span class="timer-text">${Math.floor(plannedPercentage)}%</span>
                         </div>
@@ -294,7 +438,11 @@ function calculateDaysSinceLastContact(contact) {
     }
     
     // Find the most recent interaction date
-    const dates = contact.interactions.map(interaction => new Date(interaction.date));
+    // Parse dates as local time to avoid timezone issues
+    const dates = contact.interactions.map(interaction => {
+        const parts = interaction.date.split('-');
+        return new Date(parts[0], parts[1] - 1, parts[2]);
+    });
     const mostRecentDate = new Date(Math.max.apply(null, dates));
     
     // Calculate days difference
@@ -302,7 +450,7 @@ function calculateDaysSinceLastContact(contact) {
     today.setHours(0, 0, 0, 0); // Reset time to start of day
     
     const diffTime = today - mostRecentDate;
-    const diffDays = Math.floor(diffTime / (1000 * 60 * 60 * 24));
+    const diffDays = Math.round(diffTime / (1000 * 60 * 60 * 24));
     
     return diffDays;
 }
@@ -367,6 +515,50 @@ function getContactStatus(percentage) {
 function isContactDue(contact) {
     const percentage = calculateTimePercentage(contact);
     return percentage >= 90;
+}
+
+/**
+ * Get the next future planned interaction for a contact
+ * @param {Object} contact - The contact data
+ * @returns {Object|null} - The next planned interaction or null
+ */
+function getNextFuturePlannedInteraction(contact) {
+    if (!contact.interactions) return null;
+    
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    
+    const futurePlanned = contact.interactions.filter(i => {
+        if (!i.planned) return false;
+        const parts = i.date.split('-');
+        const date = new Date(parts[0], parts[1] - 1, parts[2]);
+        return date >= today;
+    });
+    
+    if (futurePlanned.length === 0) return null;
+    
+    // Sort by date ascending
+    futurePlanned.sort((a, b) => new Date(a.date) - new Date(b.date));
+    
+    return futurePlanned[0];
+}
+
+/**
+ * Format days until label
+ * @param {number} days - Number of days
+ * @returns {string} - Formatted label
+ */
+function formatDaysUntilLabel(days) {
+    if (days < 0) {
+        if (days === -1) return 'Gisteren';
+        return `${Math.abs(days)} dagen geleden`;
+    } else if (days === 0) {
+        return 'Vandaag';
+    } else if (days === 1) {
+        return 'Morgen';
+    } else {
+        return `Over ${days} dagen`;
+    }
 }
 
 /**
@@ -469,6 +661,7 @@ async function saveContact() {
     // Get form values
     const contactId = document.getElementById('contact-id').value;
     const name = document.getElementById('contact-name').value;
+    const categoryId = document.getElementById('contact-category').value || null;
     const birthday = document.getElementById('contact-birthday').value;
     const frequency = parseInt(document.getElementById('contact-frequency').value);
     const notes = document.getElementById('contact-notes').value;
@@ -490,6 +683,7 @@ async function saveContact() {
             // Save to Supabase
             const contactData = {
                 name,
+                category_id: categoryId,
                 birthday: birthday || null,
                 frequency,
                 notes: notes || null,
@@ -513,6 +707,7 @@ async function saveContact() {
                     contactsData[index] = {
                         ...contactsData[index],
                         name,
+                        categoryId,
                         birthday,
                         frequency,
                         notes,
@@ -535,6 +730,7 @@ async function saveContact() {
                 const newContact = {
                     id: newId,
                     name,
+                    categoryId,
                     birthday,
                     frequency,
                     notes,
@@ -552,6 +748,7 @@ async function saveContact() {
                 if (index !== -1) {
                     const existingContact = contactsData[index];
                     existingContact.name = name;
+                    existingContact.categoryId = categoryId;
                     existingContact.birthday = birthday;
                     existingContact.frequency = frequency;
                     existingContact.notes = notes;
@@ -564,6 +761,7 @@ async function saveContact() {
                 const newContact = {
                     id: generateUniqueId(),
                     name,
+                    categoryId,
                     birthday,
                     frequency,
                     notes,
@@ -607,7 +805,6 @@ function showInteractionModal(contactId, interactionId = null) {
     document.getElementById('interaction-form').reset();
     document.getElementById('interaction-contact-id').value = contactId;
     document.getElementById('interaction-id').value = '';
-    document.getElementById('interaction-planned').checked = false;
     document.getElementById('interaction-date').valueAsDate = new Date();
     document.getElementById('interaction-notes').value = '';
     
@@ -627,7 +824,6 @@ function showInteractionModal(contactId, interactionId = null) {
         document.getElementById('interaction-date').value = interaction.date;
         document.getElementById('interaction-type').value = interaction.type;
         document.getElementById('interaction-notes').value = interaction.notes || '';
-        document.getElementById('interaction-planned').checked = interaction.planned || false;
         
         // Update title
         document.getElementById('interaction-modal-title').textContent = 'Contact Bewerken';
@@ -653,7 +849,14 @@ async function saveInteraction() {
     const date = document.getElementById('interaction-date').value;
     const type = document.getElementById('interaction-type').value;
     const notes = document.getElementById('interaction-notes').value;
-    const isPlanned = document.getElementById('interaction-planned').checked;
+    
+    // Determine if planned based on date (Future = Planned, Today/Past = History)
+    const dateParts = date.split('-');
+    const selectedDate = new Date(dateParts[0], dateParts[1] - 1, dateParts[2]);
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    
+    const isPlanned = selectedDate > today;
     
     // Find contact
     const contactIndex = contactsData.findIndex(c => c.id === contactId);
@@ -768,39 +971,33 @@ async function saveInteraction() {
 }
 
 /**
- * Show contact details in the details modal
+ * Show contact details in modal
  * @param {string} contactId - The contact ID
  */
 function showContactDetails(contactId) {
     const contact = contactsData.find(c => c.id === contactId);
-    if (!contact) {
-        return;
-    }
+    if (!contact) return;
     
-    // Set contact name
+    // Update modal title
     document.getElementById('details-name').textContent = contact.name;
     
-    // Set up buttons
-    document.getElementById('delete-contact-btn').setAttribute('data-id', contactId);
-    document.getElementById('edit-contact-btn').setAttribute('data-id', contactId);
+    // Set button attributes
+    document.getElementById('delete-contact-btn').setAttribute('data-id', contact.id);
+    document.getElementById('edit-contact-btn').setAttribute('data-id', contact.id);
     
-    // Remove previous event listeners
+    // Setup add interaction button
     const addInteractionBtn = document.getElementById('add-interaction-btn');
-    const newAddInteractionBtn = addInteractionBtn.cloneNode(true);
-    addInteractionBtn.parentNode.replaceChild(newAddInteractionBtn, addInteractionBtn);
+    // Clone to remove old event listeners
+    const newAddBtn = addInteractionBtn.cloneNode(true);
+    addInteractionBtn.parentNode.replaceChild(newAddBtn, addInteractionBtn);
     
-    // Add new event listener
-    newAddInteractionBtn.addEventListener('click', function() {
-        // Close details modal first to prevent z-index issues
+    newAddBtn.addEventListener('click', function() {
         detailsModal.hide();
-        
-        // Wait for modal to close, then open interaction modal
-        setTimeout(function() {
+        setTimeout(() => {
             showInteractionModal(contactId);
-        }, 300); // Bootstrap modal transition time
+        }, 500);
     });
     
-    // Build contact info
     const infoContainer = document.getElementById('details-info');
     let infoHtml = '';
     
@@ -830,7 +1027,14 @@ function showContactDetails(contactId) {
     }
     
     // Find upcoming planned interactions
-    const plannedInteractions = contact.interactions ? contact.interactions.filter(i => i.planned) : [];
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    
+    const plannedInteractions = contact.interactions ? contact.interactions.filter(i => {
+        if (!i.planned) return false;
+        const date = new Date(i.date);
+        return date >= today;
+    }) : [];
     
     if (plannedInteractions.length > 0) {
         // Sort by date (earliest first)
@@ -841,8 +1045,6 @@ function showContactDetails(contactId) {
         const daysUntilPlanned = calculateDaysUntilDate(nextPlannedInteraction.date);
         
         // Calculate percentage for progress bar (closer to date = higher percentage)
-        const today = new Date();
-        today.setHours(0, 0, 0, 0);
         const plannedDate = new Date(nextPlannedInteraction.date);
         const originalDateSet = new Date(plannedDate);
         originalDateSet.setDate(originalDateSet.getDate() - 30); // Assume planned 30 days in advance
@@ -852,7 +1054,7 @@ function showContactDetails(contactId) {
         const plannedPercentage = Math.min(100, Math.max(0, (daysElapsed / totalDays) * 100));
         
         infoHtml += '<div class="alert alert-primary mt-3">';
-        infoHtml += `<p><strong>Geplande afspraak:</strong> ${formatDate(nextPlannedInteraction.date)} (${daysUntilPlanned <= 0 ? 'Vandaag' : `Over ${daysUntilPlanned} dagen`})</p>`;
+        infoHtml += `<p><strong>Geplande afspraak:</strong> ${formatDate(nextPlannedInteraction.date)} (${formatDaysUntilLabel(daysUntilPlanned)})</p>`;
         infoHtml += `<p><strong>Type:</strong> ${getInteractionTypeLabel(nextPlannedInteraction.type)}</p>`;
         
         infoHtml += `<div class="progress mt-2">
@@ -902,8 +1104,15 @@ function showContactDetails(contactId) {
         historyHtml = '<p class="text-center text-muted">Geen interacties gevonden</p>';
     } else {
         // Create separate sections for planned and past interactions
-        const pastInteractions = contact.interactions.filter(i => !i.planned);
-        const plannedInteractions = contact.interactions.filter(i => i.planned);
+        // Note: 'today' and 'plannedInteractions' are already defined in the outer scope
+        
+        // Past interactions: planned=false OR (planned=true AND date < today)
+        const pastInteractions = contact.interactions.filter(i => {
+            if (!i.planned) return true;
+            const parts = i.date.split('-');
+            const date = new Date(parts[0], parts[1] - 1, parts[2]);
+            return date < today;
+        });
         
         // Add planned interactions section if any exist
         if (plannedInteractions.length > 0) {
@@ -919,7 +1128,7 @@ function showContactDetails(contactId) {
                     <div class="interaction-header d-flex justify-content-between">
                         <span class="interaction-date">
                             ${formatDate(interaction.date)} 
-                            <span class="badge bg-primary ms-2">${daysUntil <= 0 ? 'Vandaag' : `Over ${daysUntil} dagen`}</span>
+                            <span class="badge bg-primary ms-2">${formatDaysUntilLabel(daysUntil)}</span>
                         </span>
                         <div>
                             <span class="interaction-type">
@@ -1010,12 +1219,13 @@ function showContactDetails(contactId) {
  * @returns {number} - Days until date
  */
 function calculateDaysUntilDate(dateString) {
-    const targetDate = new Date(dateString);
+    const parts = dateString.split('-');
+    const targetDate = new Date(parts[0], parts[1] - 1, parts[2]);
     const today = new Date();
     today.setHours(0, 0, 0, 0);
     
     const diffTime = targetDate - today;
-    return Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+    return Math.round(diffTime / (1000 * 60 * 60 * 24));
 }
 
 /**
@@ -1098,6 +1308,11 @@ function editContact(contactId) {
     // Set form values
     document.getElementById('contact-id').value = contact.id;
     document.getElementById('contact-name').value = contact.name;
+    
+    // Populate categories and set selected
+    populateCategorySelect();
+    document.getElementById('contact-category').value = contact.categoryId || '';
+    
     document.getElementById('contact-birthday').value = contact.birthday || '';
     document.getElementById('contact-frequency').value = contact.frequency || 30;
     document.getElementById('contact-notes').value = contact.notes || '';
@@ -1586,6 +1801,10 @@ function onAuthStateChange(isAuthenticated) {
         loadDataFromSupabase();
         
     } else {
+        // Clear data on logout
+        contactsData = [];
+        categoriesData = [];
+        
         // Hide user info
         document.getElementById('user-info').style.display = 'none';
         
@@ -1738,6 +1957,20 @@ async function loadDataFromSupabase() {
     if (!currentUser) return;
     
     try {
+        // Load categories
+        const { data: categories, error: categoriesError } = await supabaseClient
+            .from('categories')
+            .select('*')
+            .eq('user_id', currentUser.id);
+            
+        if (categoriesError) {
+            console.warn('Could not load categories (table might not exist yet):', categoriesError);
+            // Don't throw, just continue with empty categories
+            categoriesData = [];
+        } else {
+            categoriesData = categories;
+        }
+
         // Load contacts
         const { data: contacts, error: contactsError } = await supabaseClient
             .from('contacts')
@@ -1758,6 +1991,7 @@ async function loadDataFromSupabase() {
         contactsData = contacts.map(contact => ({
             id: contact.id,
             name: contact.name,
+            categoryId: contact.category_id,
             birthday: contact.birthday,
             frequency: contact.frequency,
             notes: contact.notes,
@@ -1768,7 +2002,7 @@ async function loadDataFromSupabase() {
         // Render the contacts
         renderContacts();
         
-        console.log(`Loaded ${contactsData.length} contacts from Supabase`);
+        console.log(`Loaded ${contactsData.length} contacts and ${categoriesData.length} categories from Supabase`);
         
     } catch (error) {
         console.error('Error loading data from Supabase:', error);
@@ -1779,4 +2013,151 @@ async function loadDataFromSupabase() {
 // Initialize auth if Supabase is configured
 if (isSupabaseConfigured()) {
     document.addEventListener('DOMContentLoaded', initAuth);
+}
+
+/**
+ * ======================
+ * CATEGORY MANAGEMENT
+ * ======================
+ */
+
+/**
+ * Render the list of categories in the modal
+ */
+function renderCategoriesList() {
+    categoriesList.innerHTML = '';
+    
+    if (categoriesData.length === 0) {
+        categoriesList.innerHTML = '<div class="text-center text-muted py-3 small">Nog geen categorieën</div>';
+        return;
+    }
+    
+    categoriesData.forEach(category => {
+        const item = document.createElement('div');
+        item.className = 'list-group-item d-flex justify-content-between align-items-center';
+        item.innerHTML = `
+            <div class="d-flex align-items-center gap-2">
+                <span class="color-dot" style="background-color: ${category.color}"></span>
+                <span>${category.name}</span>
+            </div>
+            <button class="btn btn-sm btn-outline-danger delete-category-btn" data-id="${category.id}">
+                <i class="bi bi-trash"></i>
+            </button>
+        `;
+        
+        item.querySelector('.delete-category-btn').addEventListener('click', function() {
+            deleteCategory(category.id);
+        });
+        
+        categoriesList.appendChild(item);
+    });
+}
+
+/**
+ * Populate the category select dropdown
+ */
+function populateCategorySelect() {
+    contactCategorySelect.innerHTML = '<option value="">Geen categorie</option>';
+    
+    categoriesData.forEach(category => {
+        const option = document.createElement('option');
+        option.value = category.id;
+        option.textContent = category.name;
+        contactCategorySelect.appendChild(option);
+    });
+}
+
+/**
+ * Save a new category
+ */
+async function saveCategory() {
+    const nameInput = document.getElementById('category-name');
+    const colorInput = document.getElementById('category-color');
+    
+    const name = nameInput.value.trim();
+    const color = colorInput.value;
+    
+    if (!name) return;
+    
+    try {
+        if (isSupabaseConfigured() && currentUser) {
+            // Save to Supabase
+            const { data, error } = await supabaseClient
+                .from('categories')
+                .insert({
+                    user_id: currentUser.id,
+                    name,
+                    color
+                })
+                .select()
+                .single();
+            
+            if (error) throw error;
+            
+            categoriesData.push(data);
+        } else {
+            // Local storage
+            const newCategory = {
+                id: generateUniqueId(),
+                name,
+                color
+            };
+            categoriesData.push(newCategory);
+            saveCategoriesData();
+        }
+        
+        // Reset form
+        nameInput.value = '';
+        
+        // Update UI
+        renderCategoriesList();
+        populateCategorySelect(); // Update select if open
+        
+    } catch (error) {
+        console.error('Error saving category:', error);
+        alert('Fout bij opslaan categorie: ' + error.message);
+    }
+}
+
+/**
+ * Delete a category
+ * @param {string} id - Category ID
+ */
+async function deleteCategory(id) {
+    if (!confirm('Weet je zeker dat je deze categorie wilt verwijderen?')) return;
+    
+    try {
+        if (isSupabaseConfigured() && currentUser) {
+            const { error } = await supabaseClient
+                .from('categories')
+                .delete()
+                .eq('id', id)
+                .eq('user_id', currentUser.id);
+            
+            if (error) throw error;
+        }
+        
+        // Remove from local array
+        categoriesData = categoriesData.filter(c => c.id !== id);
+        
+        // Update contacts that had this category
+        contactsData.forEach(contact => {
+            if (contact.categoryId === id) {
+                contact.categoryId = null;
+            }
+        });
+        
+        if (!isSupabaseConfigured() || !currentUser) {
+            saveCategoriesData();
+            saveContactsData();
+        }
+        
+        // Update UI
+        renderCategoriesList();
+        renderContacts(); // Re-render contacts to remove badges
+        
+    } catch (error) {
+        console.error('Error deleting category:', error);
+        alert('Fout bij verwijderen categorie: ' + error.message);
+    }
 }

@@ -3,17 +3,37 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Contact Timer</title>
+    <title>Contact Timer (DEV)</title>
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.10.0/font/bootstrap-icons.css">
     <link rel="stylesheet" href="css/styles.css">
+    <style>
+        /* Dev environment indicator */
+        body::before {
+            content: "DEV ENVIRONMENT";
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            background-color: #ffc107;
+            color: #000;
+            text-align: center;
+            font-weight: bold;
+            z-index: 9999;
+            padding: 2px;
+            font-size: 12px;
+        }
+        body {
+            padding-top: 20px;
+        }
+    </style>
 </head>
 <body>
     <div class="container-fluid">
         <header class="bg-primary text-white p-3 mb-4">
             <div class="row align-items-center">
                 <div class="col-md-8">
-                    <h1>Contactbeheer</h1>
+                    <h1>Contactbeheer (DEV)</h1>
                 </div>
                 <div class="col-md-4 text-md-end">
                     <div class="d-inline-block me-2">
@@ -215,7 +235,7 @@
             <div class="modal-dialog">
                 <div class="modal-content">
                     <div class="modal-header">
-                        <h5 class="modal-title" id="auth-modal-title">Inloggen</h5>
+                        <h5 class="modal-title" id="auth-modal-title">Inloggen (DEV)</h5>
                     </div>
                     <div class="modal-body">
                         <ul class="nav nav-tabs mb-3" id="authTabs" role="tablist">
@@ -322,7 +342,8 @@
 
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-    <script src="js/supabase-config.js"></script>
+    <!-- DEV CONFIGURATION -->
+    <script src="js/supabase-config-dev.js"></script>
     <script src="js/app.js"></script>
 </body>
 </html>
