@@ -25,6 +25,8 @@ const manageCategoriesBtn = document.getElementById('manage-categories-btn');
 const categoryForm = document.getElementById('category-form');
 const categoriesList = document.getElementById('categories-list');
 const contactCategorySelect = document.getElementById('contact-category');
+const searchContactsInput = document.getElementById('search-contacts');
+const categoryFilters = document.getElementById('category-filters');
 
 // Bootstrap Modal instances
 let contactModal;
@@ -32,12 +34,17 @@ let interactionModal;
 let detailsModal;
 let authModal;
 let categoriesModal;
+let editCategoryModal;
 
 // Current user
 let currentUser = null;
 
 // Current sort method
 let currentSortMethod = 'urgency';
+
+// Search & filter state
+let currentSearchQuery = '';
+let currentCategoryFilter = 'all';
 
 // Initialize the application
 document.addEventListener('DOMContentLoaded', function() {
@@ -46,14 +53,70 @@ document.addEventListener('DOMContentLoaded', function() {
     interactionModal = new bootstrap.Modal(document.getElementById('interaction-modal'));
     detailsModal = new bootstrap.Modal(document.getElementById('details-modal'));
     categoriesModal = new bootstrap.Modal(document.getElementById('categories-modal'));
-    
+    editCategoryModal = new bootstrap.Modal(document.getElementById('edit-category-modal'));
+
+    // Edit category color picker
+    document.getElementById('edit-color-grid').querySelectorAll('.color-option').forEach(option => {
+        option.addEventListener('click', function() {
+            const color = this.dataset.color;
+            document.getElementById('edit-category-color').value = color;
+            document.getElementById('edit-selected-color-preview').style.backgroundColor = color;
+            document.getElementById('edit-category-preview').style.backgroundColor = color;
+            document.getElementById('edit-color-grid').querySelectorAll('.color-option').forEach(o => o.classList.remove('selected'));
+            this.classList.add('selected');
+            // Sluit dropdown
+            const dd = bootstrap.Dropdown.getInstance(document.getElementById('edit-color-dropdown'));
+            if (dd) dd.hide();
+        });
+    });
+
+    // Edit category naam live preview
+    document.getElementById('edit-category-name').addEventListener('input', function() {
+        document.getElementById('edit-category-preview').textContent = this.value || 'Voorbeeld';
+    });
+
+    // Save edit category
+    document.getElementById('save-edit-category-btn').addEventListener('click', function() {
+        updateCategory();
+    });
+
     // Load data from localStorage
     loadContactsData();
     loadCategoriesData();
     
     // Render contacts
     renderContacts();
-    
+
+    // Populeer categorie filter chips (for non-Supabase environments)
+    // For Supabase, this is called in loadDataFromSupabase()
+    if (!isSupabaseConfigured() || !currentUser) {
+        populateCategoryFilters();
+    }
+
+    // Search & filter event listeners
+    if (searchContactsInput) {
+        searchContactsInput.addEventListener('input', function() {
+            currentSearchQuery = this.value.toLowerCase();
+            renderContacts();
+        });
+    }
+
+    // Category filter buttons
+    document.addEventListener('click', function(e) {
+        if (e.target.closest('#category-filters .btn')) {
+            const btn = e.target.closest('#category-filters .btn');
+            const category = btn.dataset.category;
+
+            // Update active button
+            categoryFilters.querySelectorAll('.btn').forEach(b => b.classList.remove('active'));
+            btn.classList.add('active');
+
+            // Update filter & render
+            currentCategoryFilter = category;
+            renderContacts();
+        }
+    });
+
     // Set up event listeners
     setupEventListeners();
     
@@ -202,33 +265,48 @@ function setupEventListeners() {
 function renderContacts() {
     // Clear existing contacts
     contactsContainer.innerHTML = '';
-    
+
+    // Filter contacten based on search & category
+    let filtered = contactsData.filter(contact => {
+        // Search filter
+        if (currentSearchQuery && !contact.name.toLowerCase().includes(currentSearchQuery)) {
+            return false;
+        }
+
+        // Category filter
+        if (currentCategoryFilter !== 'all' && contact.categoryId !== currentCategoryFilter) {
+            return false;
+        }
+
+        return true;
+    });
+
     // Show or hide no contacts message
-    if (contactsData.length === 0) {
+    if (filtered.length === 0) {
         noContactsMessage.style.display = 'block';
         return;
     } else {
         noContactsMessage.style.display = 'none';
     }
-    
+
     // Sort contacts based on current method
     if (currentSortMethod === 'planned') {
-        contactsData.sort((a, b) => {
+        filtered.sort((a, b) => {
             // Check for future planned interactions
             const aPlanned = getNextFuturePlannedInteraction(a);
             const bPlanned = getNextFuturePlannedInteraction(b);
-            
+
             // If both have planned interactions, sort by date (earliest first)
             if (aPlanned && bPlanned) {
                 return new Date(aPlanned.date) - new Date(bPlanned.date);
             }
-            
+
             // If only a has planned interaction, it comes first
             if (aPlanned) return -1;
-            
+
             // If only b has planned interaction, it comes first
             if (bPlanned) return 1;
-            
+
             // If neither has planned interaction, sort by urgency (default fallback)
             const aPercentage = calculateTimePercentage(a);
             const bPercentage = calculateTimePercentage(b);
@@ -236,15 +314,15 @@ function renderContacts() {
         });
     } else {
         // Default: Sort by urgency (those who need contact soonest first)
-        contactsData.sort((a, b) => {
+        filtered.sort((a, b) => {
             const aPercentage = calculateTimePercentage(a);
             const bPercentage = calculateTimePercentage(b);
             return bPercentage - aPercentage;
         });
     }
-    
+
     // Create and append contact cards
-    contactsData.forEach(contact => {
+    filtered.forEach(contact => {
         const contactCard = createContactCard(contact);
         contactsContainer.appendChild(contactCard);
     });
@@ -338,12 +416,9 @@ function createContactCard(contact) {
 
     // Create card HTML structure
     const cardHtml = `
-        <div class="card contact-card" style="${category ? `border-top: 5px solid ${categoryColor};` : ''}">
+        <div class="card contact-card clickable-card" style="${category ? `border-top: 5px solid ${categoryColor};` : ''} cursor: pointer;">
             <div class="card-header d-flex justify-content-between align-items-center bg-white">
                 <h5 class="contact-name m-0">${contact.name}</h5>
-                <button class="btn btn-sm btn-outline-primary action-btn view-details-btn" data-id="${contact.id}">
-                    <i class="bi bi-eye"></i>
-                </button>
             </div>
             <div class="card-body">
                 ${category ? `<span class="badge mb-2" style="background-color: ${categoryColor}">${categoryName}</span>` : ''}
@@ -396,12 +471,12 @@ function createContactCard(contact) {
                     `}
                 </div>
                 
-                <div class="card-actions mt-3 d-flex justify-content-between">
-                    <button class="btn btn-sm btn-success action-btn log-interaction-btn" data-id="${contact.id}">
-                        <i class="bi bi-plus-circle"></i>
+                <div class="card-actions mt-3">
+                    <button class="btn btn-success action-btn log-interaction-btn" data-id="${contact.id}">
+                        <i class="bi bi-plus-circle"></i> Vastleggen
                     </button>
-                    <button class="btn btn-sm btn-primary action-btn edit-btn" data-id="${contact.id}">
-                        <i class="bi bi-pencil"></i>
+                    <button class="btn btn-primary action-btn edit-btn" data-id="${contact.id}">
+                        <i class="bi bi-pencil"></i> Bewerken
                     </button>
                 </div>
             </div>
@@ -410,16 +485,18 @@ function createContactCard(contact) {
     `;
     
     col.innerHTML = cardHtml;
-    
-    // Add event listeners for card buttons
-    col.querySelector('.view-details-btn').addEventListener('click', function() {
-        showContactDetails(contact.id);
+
+    // Klik op de kaart = open details (tenzij je op een knop klikt)
+    col.querySelector('.contact-card').addEventListener('click', function(e) {
+        if (!e.target.closest('.action-btn')) {
+            showContactDetails(contact.id);
+        }
     });
-    
+
     col.querySelector('.log-interaction-btn').addEventListener('click', function() {
         showInteractionModal(contact.id);
     });
-    
+
     col.querySelector('.edit-btn').addEventListener('click', function() {
         editContact(contact.id);
     });
@@ -436,23 +513,23 @@ function calculateDaysSinceLastContact(contact) {
     if (!contact.interactions || contact.interactions.length === 0) {
         return Infinity; // No interactions yet
     }
-    
-    // Find the most recent interaction date
-    // Parse dates as local time to avoid timezone issues
-    const dates = contact.interactions.map(interaction => {
-        const parts = interaction.date.split('-');
-        return new Date(parts[0], parts[1] - 1, parts[2]);
-    });
-    const mostRecentDate = new Date(Math.max.apply(null, dates));
-    
-    // Calculate days difference
+
     const today = new Date();
-    today.setHours(0, 0, 0, 0); // Reset time to start of day
-    
+    today.setHours(0, 0, 0, 0);
+
+    // Alleen verleden en huidige interacties meetellen — toekomstige geplande negeren
+    const pastDates = contact.interactions
+        .map(interaction => {
+            const parts = interaction.date.split('-');
+            return new Date(parts[0], parts[1] - 1, parts[2]);
+        })
+        .filter(d => d <= today);
+
+    if (pastDates.length === 0) return Infinity;
+
+    const mostRecentDate = new Date(Math.max.apply(null, pastDates));
     const diffTime = today - mostRecentDate;
-    const diffDays = Math.round(diffTime / (1000 * 60 * 60 * 24));
-    
-    return diffDays;
+    return Math.round(diffTime / (1000 * 60 * 60 * 24));
 }
 
 /**
@@ -584,19 +661,13 @@ function formatLastContactDate(contact) {
     if (!contact.interactions || contact.interactions.length === 0) {
         return 'Nooit';
     }
-    
-    const dates = contact.interactions.map(interaction => new Date(interaction.date));
-    const mostRecentDate = new Date(Math.max.apply(null, dates));
-    
+
     const daysSince = calculateDaysSinceLastContact(contact);
-    
-    if (daysSince === 0) {
-        return 'Vandaag';
-    } else if (daysSince === 1) {
-        return 'Gisteren';
-    } else {
-        return `${daysSince} dagen geleden`;
-    }
+
+    if (daysSince === Infinity) return 'Nooit';
+    if (daysSince === 0) return 'Vandaag';
+    if (daysSince === 1) return 'Gisteren';
+    return `${daysSince} dagen geleden`;
 }
 
 /**
@@ -1999,9 +2070,12 @@ async function loadDataFromSupabase() {
             interactions: interactions.filter(i => i.contact_id === contact.id)
         }));
         
+        // Populate category filters
+        populateCategoryFilters();
+
         // Render the contacts
         renderContacts();
-        
+
         console.log(`Loaded ${contactsData.length} contacts and ${categoriesData.length} categories from Supabase`);
         
     } catch (error) {
@@ -2040,11 +2114,20 @@ function renderCategoriesList() {
                 <span class="color-dot" style="background-color: ${category.color}"></span>
                 <span>${category.name}</span>
             </div>
-            <button class="btn btn-sm btn-outline-danger delete-category-btn" data-id="${category.id}">
-                <i class="bi bi-trash"></i>
-            </button>
+            <div class="d-flex gap-1">
+                <button class="btn btn-sm btn-outline-primary edit-category-btn" data-id="${category.id}" title="Bewerken">
+                    <i class="bi bi-pencil"></i>
+                </button>
+                <button class="btn btn-sm btn-outline-danger delete-category-btn" data-id="${category.id}" title="Verwijderen">
+                    <i class="bi bi-trash"></i>
+                </button>
+            </div>
         `;
-        
+
+        item.querySelector('.edit-category-btn').addEventListener('click', function() {
+            openEditCategory(category.id);
+        });
+
         item.querySelector('.delete-category-btn').addEventListener('click', function() {
             deleteCategory(category.id);
         });
@@ -2058,13 +2141,31 @@ function renderCategoriesList() {
  */
 function populateCategorySelect() {
     contactCategorySelect.innerHTML = '<option value="">Geen categorie</option>';
-    
+
     categoriesData.forEach(category => {
         const option = document.createElement('option');
         option.value = category.id;
         option.textContent = category.name;
         contactCategorySelect.appendChild(option);
     });
+}
+
+/**
+ * Populate category filter chips
+ */
+function populateCategoryFilters() {
+    if (!categoryFilters) return;
+
+    const filterBtns = categoryFilters.querySelectorAll('.btn');
+    if (filterBtns.length === 1) { // Only "Alles" button exists
+        categoriesData.forEach(category => {
+            const btn = document.createElement('button');
+            btn.className = 'btn btn-sm btn-outline-primary';
+            btn.dataset.category = category.id;
+            btn.textContent = category.name;
+            categoryFilters.appendChild(btn);
+        });
+    }
 }
 
 /**
@@ -2111,11 +2212,80 @@ async function saveCategory() {
         
         // Update UI
         renderCategoriesList();
-        populateCategorySelect(); // Update select if open
+        populateCategorySelect();
+        populateCategoryFilters();
         
     } catch (error) {
         console.error('Error saving category:', error);
         alert('Fout bij opslaan categorie: ' + error.message);
+    }
+}
+
+/**
+ * Open edit modal for a category
+ * @param {string} id - Category ID
+ */
+function openEditCategory(id) {
+    const category = categoriesData.find(c => c.id === id);
+    if (!category) return;
+
+    document.getElementById('edit-category-id').value = id;
+    document.getElementById('edit-category-name').value = category.name;
+    document.getElementById('edit-category-color').value = category.color;
+    document.getElementById('edit-selected-color-preview').style.backgroundColor = category.color;
+    document.getElementById('edit-category-preview').style.backgroundColor = category.color;
+    document.getElementById('edit-category-preview').textContent = category.name;
+
+    // Zet geselecteerde kleur in grid
+    document.getElementById('edit-color-grid').querySelectorAll('.color-option').forEach(o => {
+        o.classList.toggle('selected', o.dataset.color === category.color);
+    });
+
+    editCategoryModal.show();
+}
+
+/**
+ * Update an existing category
+ */
+async function updateCategory() {
+    const id = document.getElementById('edit-category-id').value;
+    const name = document.getElementById('edit-category-name').value.trim();
+    const color = document.getElementById('edit-category-color').value;
+
+    if (!name) {
+        alert('Voer een naam in voor de categorie.');
+        return;
+    }
+
+    try {
+        if (isSupabaseConfigured() && currentUser) {
+            const { error } = await supabaseClient
+                .from('categories')
+                .update({ name, color })
+                .eq('id', id)
+                .eq('user_id', currentUser.id);
+
+            if (error) throw error;
+        }
+
+        // Update lokale array
+        const idx = categoriesData.findIndex(c => c.id === id);
+        if (idx !== -1) {
+            categoriesData[idx] = { ...categoriesData[idx], name, color };
+        }
+
+        if (!isSupabaseConfigured() || !currentUser) {
+            saveCategoriesData();
+        }
+
+        editCategoryModal.hide();
+        renderCategoriesList();
+        populateCategorySelect();
+        renderContacts(); // badges bijwerken
+
+    } catch (error) {
+        console.error('Error updating category:', error);
+        alert('Fout bij bijwerken categorie: ' + error.message);
     }
 }
 
@@ -2154,6 +2324,7 @@ async function deleteCategory(id) {
         
         // Update UI
         renderCategoriesList();
+        populateCategoryFilters();
         renderContacts(); // Re-render contacts to remove badges
         
     } catch (error) {
