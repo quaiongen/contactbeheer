@@ -1024,10 +1024,10 @@ async function saveInteraction() {
         const newInteractionId = interactionId || generateUniqueId();
         const contactName = contactsData[contactIndex].name;
 
-        // Google Calendar sync
+        // Google Calendar sync (ook voor afspraken in het verleden)
         const calendarTitle = title || `Contact: ${contactName}`;
         let calendarEventId = existingCalendarEventId || null;
-        if (isPlanned) {
+        if (googleAccessToken) {
             if (calendarEventId) {
                 // Update bestaand event
                 await updateCalendarEvent(calendarEventId, calendarTitle, date, startTime, endTime, location, notes);
@@ -1035,10 +1035,6 @@ async function saveInteraction() {
                 // Nieuw event aanmaken
                 calendarEventId = await createCalendarEvent(calendarTitle, date, startTime, endTime, location, notes);
             }
-        } else if (calendarEventId) {
-            // Datum veranderd naar verleden: verwijder event
-            await deleteCalendarEvent(calendarEventId);
-            calendarEventId = null;
         }
 
         if (isSupabaseConfigured() && currentUser) {
