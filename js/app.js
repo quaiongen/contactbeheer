@@ -46,6 +46,13 @@ let currentSortMethod = 'urgency';
 let currentSearchQuery = '';
 let currentCategoryFilter = 'all';
 
+// Google Calendar
+const GOOGLE_CLIENT_ID = '427383300995-560ndb1vs21i1a8idhm4cm2m1u0h495v.apps.googleusercontent.com';
+const GOOGLE_SCOPES = 'https://www.googleapis.com/auth/calendar.events https://www.googleapis.com/auth/calendar.freebusy';
+const GOOGLE_CONSENT_EXPIRY_MS = 60 * 24 * 60 * 60 * 1000; // 60 dagen
+let googleTokenClient = null;
+let googleAccessToken = null;
+
 // Initialize the application
 document.addEventListener('DOMContentLoaded', function() {
     // Initialize Bootstrap modals
@@ -117,12 +124,35 @@ document.addEventListener('DOMContentLoaded', function() {
         }
     });
 
+    // Google Calendar button
+    document.getElementById('google-calendar-btn').addEventListener('click', connectGoogleCalendar);
+
+    // Stille token-vernieuwing na page load (GIS script moet eerst klaar zijn)
+    window.addEventListener('load', initGoogleCalendarSilently);
+
+    // Date change in interaction modal → check availability
+    document.getElementById('interaction-date').addEventListener('change', function() {
+        if (googleAccessToken && this.value) {
+            checkGoogleAvailability(this.value);
+        }
+    });
+
+    // Start time change → auto-set end time to start + 1 uur
+    document.getElementById('interaction-start-time').addEventListener('change', function() {
+        if (this.value) {
+            const [h, m] = this.value.split(':').map(Number);
+            const newH = (h + 1) % 24;
+            document.getElementById('interaction-end-time').value =
+                `${String(newH).padStart(2, '0')}:${String(m).padStart(2, '0')}`;
+        }
+    });
+
     // Set up event listeners
     setupEventListeners();
-    
+
     // Initialize notification system
     initNotifications();
-    
+
     // Check for contacts that need interaction
     checkContactsDue();
 });
@@ -393,14 +423,17 @@ function createContactCard(contact) {
         nextPlannedInteraction = plannedInteractions[0];
         daysUntilPlanned = calculateDaysUntilDate(nextPlannedInteraction.date);
         
-        // Calculate percentage for progress bar (closer to date = higher percentage)
+        // Calculate percentage for progress bar: 0% when created → 100% on appointment date
         const plannedDate = new Date(nextPlannedInteraction.date);
-        const originalDateSet = new Date(plannedDate);
-        originalDateSet.setDate(originalDateSet.getDate() - 30); // Assume planned 30 days in advance
-        
-        const totalDays = (plannedDate - originalDateSet) / (1000 * 60 * 60 * 24);
-        const daysElapsed = (today - originalDateSet) / (1000 * 60 * 60 * 24);
-        plannedPercentage = Math.min(100, Math.max(0, (daysElapsed / totalDays) * 100));
+        const createdAt = nextPlannedInteraction.created_at
+            ? new Date(nextPlannedInteraction.created_at)
+            : new Date(plannedDate.getTime() - 30 * 24 * 60 * 60 * 1000); // fallback: 30 dagen ervoor
+
+        const totalDays = (plannedDate - createdAt) / (1000 * 60 * 60 * 24);
+        const daysElapsed = (today - createdAt) / (1000 * 60 * 60 * 24);
+        plannedPercentage = totalDays > 0
+            ? Math.min(100, Math.max(0, (daysElapsed / totalDays) * 100))
+            : 100;
     }
     
     // Calculate regular contact timing and status (for non-planned interactions)
@@ -444,6 +477,11 @@ function createContactCard(contact) {
                             </span>
                             <span class="timer-text">${Math.floor(plannedPercentage)}%</span>
                         </div>
+                        ${(() => {
+                            const d = formatDate(nextPlannedInteraction.date);
+                            const t = formatTimeRange(nextPlannedInteraction.start_time, nextPlannedInteraction.end_time);
+                            return `<div class="text-muted small mt-1"><i class="bi bi-clock"></i> ${d}${t ? ' · ' + t : ''}</div>`;
+                        })()}
                         <div class="progress">
                             <div class="progress-bar bg-primary" 
                                 role="progressbar" 
@@ -456,7 +494,7 @@ function createContactCard(contact) {
                     ` : `
                     <div class="progress-container">
                         <div class="timer-indicator">
-                            <span class="timer-text">Contact over: ${calculateDaysRemaining(contact)} dagen</span>
+                            <span class="timer-text">Contact wenselijk in: ${calculateDaysRemaining(contact)} dagen</span>
                             <span class="timer-text">${Math.floor(percentage)}%</span>
                         </div>
                         <div class="progress">
@@ -650,6 +688,19 @@ function formatDate(dateString) {
         month: '2-digit',
         year: 'numeric'
     });
+}
+
+/**
+ * Format a time range for display (handles Supabase "HH:MM:SS" format)
+ * @param {string} startTime - Start time string
+ * @param {string} endTime - End time string (optional)
+ * @returns {string} - Formatted time range, e.g. "12:00–13:00" or "12:00"
+ */
+function formatTimeRange(startTime, endTime) {
+    if (!startTime) return '';
+    const s = String(startTime).substring(0, 5);
+    const e = endTime ? String(endTime).substring(0, 5) : '';
+    return e ? `${s}–${e}` : s;
 }
 
 /**
@@ -874,32 +925,61 @@ function generateUniqueId() {
 function showInteractionModal(contactId, interactionId = null) {
     // Reset form
     document.getElementById('interaction-form').reset();
+
+    // Helper: today als YYYY-MM-DD string (betrouwbaarder dan valueAsDate)
+    const now = new Date();
+    const todayStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
+
+    // Gemeenschappelijke standaardwaarden (voor nieuw contactmoment)
     document.getElementById('interaction-contact-id').value = contactId;
     document.getElementById('interaction-id').value = '';
-    document.getElementById('interaction-date').valueAsDate = new Date();
+    document.getElementById('interaction-calendar-event-id').value = '';
+    document.getElementById('interaction-title').value = '';
+    document.getElementById('interaction-date').value = todayStr;
+    document.getElementById('interaction-start-time').value = '09:00';
+    document.getElementById('interaction-end-time').value = '10:00';
+    document.getElementById('interaction-location').value = '';
     document.getElementById('interaction-notes').value = '';
-    
-    // Update title
-    document.getElementById('interaction-modal-title').textContent = 'Contact Vastleggen';
-    
-    // If editing an existing interaction
+    const availEl = document.getElementById('google-availability');
+    availEl.style.display = 'none';
+    availEl.textContent = '';
+
     if (interactionId) {
+        // ── Bewerkmodus ──────────────────────────────────────────
         const contact = contactsData.find(c => c.id === contactId);
         if (!contact || !contact.interactions) return;
-        
+
         const interaction = contact.interactions.find(i => i.id === interactionId);
         if (!interaction) return;
-        
-        // Set form values
-        document.getElementById('interaction-id').value = interaction.id;
-        document.getElementById('interaction-date').value = interaction.date;
-        document.getElementById('interaction-type').value = interaction.type;
-        document.getElementById('interaction-notes').value = interaction.notes || '';
-        
-        // Update title
+
+        // Normaliseer datum: neem altijd de eerste 10 tekens (YYYY-MM-DD)
+        // Supabase date-kolommen worden als "YYYY-MM-DD" teruggegeven,
+        // maar soms als "YYYY-MM-DDTHH:mm:ss+00:00" als de kolom een timestamp is.
+        const rawDate = interaction.date ? String(interaction.date) : todayStr;
+        const interactionDate = rawDate.substring(0, 10);
+
         document.getElementById('interaction-modal-title').textContent = 'Contact Bewerken';
+        document.getElementById('interaction-id').value = interaction.id;
+        document.getElementById('interaction-calendar-event-id').value = interaction.google_calendar_event_id || '';
+        document.getElementById('interaction-title').value = interaction.title || '';
+        document.getElementById('interaction-start-time').value = interaction.start_time ? String(interaction.start_time).substring(0, 5) : '09:00';
+        document.getElementById('interaction-end-time').value = interaction.end_time ? String(interaction.end_time).substring(0, 5) : '10:00';
+        document.getElementById('interaction-location').value = interaction.location || '';
+        document.getElementById('interaction-type').value = interaction.type || 'in-person';
+        document.getElementById('interaction-notes').value = interaction.notes || '';
+
+        // Datum als laatste zetten zodat niets het daarna kan overschrijven
+        document.getElementById('interaction-date').value = interactionDate;
+
+        // Beschikbaarheid tonen voor de afspraakdatum
+        if (googleAccessToken && interactionDate) {
+            checkGoogleAvailability(interactionDate);
+        }
+    } else {
+        // ── Nieuw contactmoment ───────────────────────────────────
+        document.getElementById('interaction-modal-title').textContent = 'Contact Vastleggen';
     }
-    
+
     interactionModal.show();
 }
 
@@ -917,38 +997,66 @@ async function saveInteraction() {
     // Get form values
     const contactId = document.getElementById('interaction-contact-id').value;
     const interactionId = document.getElementById('interaction-id').value;
+    const existingCalendarEventId = document.getElementById('interaction-calendar-event-id').value;
+    const title = document.getElementById('interaction-title').value.trim();
     const date = document.getElementById('interaction-date').value;
+    const startTime = document.getElementById('interaction-start-time').value || null;
+    const endTime = document.getElementById('interaction-end-time').value || null;
+    const location = document.getElementById('interaction-location').value.trim();
     const type = document.getElementById('interaction-type').value;
     const notes = document.getElementById('interaction-notes').value;
-    
+
     // Determine if planned based on date (Future = Planned, Today/Past = History)
     const dateParts = date.split('-');
     const selectedDate = new Date(dateParts[0], dateParts[1] - 1, dateParts[2]);
     const today = new Date();
     today.setHours(0, 0, 0, 0);
-    
+
     const isPlanned = selectedDate > today;
-    
+
     // Find contact
     const contactIndex = contactsData.findIndex(c => c.id === contactId);
     if (contactIndex === -1) {
         return;
     }
-    
+
     try {
         const newInteractionId = interactionId || generateUniqueId();
-        
+        const contactName = contactsData[contactIndex].name;
+
+        // Google Calendar sync
+        const calendarTitle = title || `Contact: ${contactName}`;
+        let calendarEventId = existingCalendarEventId || null;
+        if (isPlanned) {
+            if (calendarEventId) {
+                // Update bestaand event
+                await updateCalendarEvent(calendarEventId, calendarTitle, date, startTime, endTime, location, notes);
+            } else {
+                // Nieuw event aanmaken
+                calendarEventId = await createCalendarEvent(calendarTitle, date, startTime, endTime, location, notes);
+            }
+        } else if (calendarEventId) {
+            // Datum veranderd naar verleden: verwijder event
+            await deleteCalendarEvent(calendarEventId);
+            calendarEventId = null;
+        }
+
         if (isSupabaseConfigured() && currentUser) {
             // Save to Supabase
             const interactionData = {
                 contact_id: contactId,
                 user_id: currentUser.id,
+                title: title || null,
                 date,
+                start_time: startTime || null,
+                end_time: endTime || null,
+                location: location || null,
                 type,
                 notes: notes || null,
-                planned: isPlanned
+                planned: isPlanned,
+                google_calendar_event_id: calendarEventId || null
             };
-            
+
             if (interactionId) {
                 // Update existing interaction
                 const { error } = await supabaseClient
@@ -956,9 +1064,9 @@ async function saveInteraction() {
                     .update(interactionData)
                     .eq('id', interactionId)
                     .eq('user_id', currentUser.id);
-                
+
                 if (error) throw error;
-                
+
                 // Update in local array
                 if (!contactsData[contactIndex].interactions) {
                     contactsData[contactIndex].interactions = [];
@@ -967,10 +1075,15 @@ async function saveInteraction() {
                 if (interactionIndex !== -1) {
                     contactsData[contactIndex].interactions[interactionIndex] = {
                         id: interactionId,
+                        title: title || null,
                         date,
+                        start_time: startTime || null,
+                        end_time: endTime || null,
+                        location: location || null,
                         type,
                         notes,
-                        planned: isPlanned
+                        planned: isPlanned,
+                        google_calendar_event_id: calendarEventId || null
                     };
                 }
             } else {
@@ -981,35 +1094,45 @@ async function saveInteraction() {
                         id: newInteractionId,
                         ...interactionData
                     });
-                
+
                 if (error) throw error;
-                
+
                 // Add to local array
                 if (!contactsData[contactIndex].interactions) {
                     contactsData[contactIndex].interactions = [];
                 }
                 contactsData[contactIndex].interactions.push({
                     id: newInteractionId,
+                    title: title || null,
                     date,
+                    start_time: startTime || null,
+                    end_time: endTime || null,
+                    location: location || null,
                     type,
                     notes,
-                    planned: isPlanned
+                    planned: isPlanned,
+                    google_calendar_event_id: calendarEventId || null
                 });
             }
         } else {
             // Fallback to localStorage
             const interaction = {
                 id: newInteractionId,
+                title: title || null,
                 date,
+                start_time: startTime || null,
+                end_time: endTime || null,
+                location: location || null,
                 type,
                 notes,
-                planned: isPlanned
+                planned: isPlanned,
+                google_calendar_event_id: calendarEventId || null
             };
-            
+
             if (!contactsData[contactIndex].interactions) {
                 contactsData[contactIndex].interactions = [];
             }
-            
+
             if (interactionId) {
                 // Update existing interaction
                 const interactionIndex = contactsData[contactIndex].interactions.findIndex(i => i.id === interactionId);
@@ -1020,7 +1143,7 @@ async function saveInteraction() {
                 // Add new interaction
                 contactsData[contactIndex].interactions.push(interaction);
             }
-            
+
             saveContactsData();
         }
         
@@ -1198,7 +1321,10 @@ function showContactDetails(contactId) {
                 historyHtml += `<div class="interaction-item" data-id="${interaction.id}">
                     <div class="interaction-header d-flex justify-content-between">
                         <span class="interaction-date">
-                            ${formatDate(interaction.date)} 
+                            ${formatDate(interaction.date)}
+                            ${formatTimeRange(interaction.start_time, interaction.end_time)
+                                ? `<span class="text-muted ms-1">· ${formatTimeRange(interaction.start_time, interaction.end_time)}</span>`
+                                : ''}
                             <span class="badge bg-primary ms-2">${formatDaysUntilLabel(daysUntil)}</span>
                         </span>
                         <div>
@@ -1299,6 +1425,239 @@ function calculateDaysUntilDate(dateString) {
     return Math.round(diffTime / (1000 * 60 * 60 * 24));
 }
 
+// ─────────────────────────────────────────────
+// Google Calendar integratie
+// ─────────────────────────────────────────────
+
+/**
+ * Update de Google Calendar knop-UI naar "Gekoppeld" of "Ontkoppeld"
+ */
+function setGoogleCalendarUI(connected) {
+    const btn = document.getElementById('google-calendar-btn');
+    const status = document.getElementById('google-calendar-status');
+    if (connected) {
+        status.textContent = 'Gekoppeld ✓';
+        btn.classList.remove('btn-outline-light');
+        btn.classList.add('btn-success');
+    } else {
+        status.textContent = 'Google Calendar';
+        btn.classList.remove('btn-success');
+        btn.classList.add('btn-outline-light');
+    }
+}
+
+/**
+ * Start Google OAuth flow (expliciete klik van gebruiker)
+ * Toestemming wordt 60 dagen opgeslagen; daarna stille hernieuwing zonder popup.
+ */
+function connectGoogleCalendar() {
+    if (typeof google === 'undefined' || !google.accounts) {
+        alert('Google Identity Services zijn nog niet geladen. Probeer het opnieuw.');
+        return;
+    }
+    googleTokenClient = google.accounts.oauth2.initTokenClient({
+        client_id: GOOGLE_CLIENT_ID,
+        scope: GOOGLE_SCOPES,
+        callback: (response) => {
+            if (response.error) {
+                console.error('Google OAuth fout:', response.error);
+                return;
+            }
+            googleAccessToken = response.access_token;
+            // Sla toestemming op voor 60 dagen
+            localStorage.setItem('google_consent_granted', String(Date.now() + GOOGLE_CONSENT_EXPIRY_MS));
+            setGoogleCalendarUI(true);
+            // Sla gekozen account op als login_hint voor stille verlenging
+            fetch('https://www.googleapis.com/oauth2/v3/userinfo', {
+                headers: { Authorization: `Bearer ${response.access_token}` }
+            })
+            .then(r => r.json())
+            .then(info => { if (info.email) localStorage.setItem('google_login_hint', info.email); })
+            .catch(() => {});
+        }
+    });
+    // Bij expliciete klik altijd account-selectie tonen
+    googleTokenClient.requestAccessToken({ prompt: 'select_account' });
+}
+
+/**
+ * Stille token-vernieuwing bij pagina-load als toestemming nog geldig is.
+ * Geen popup — de gebruiker merkt hier niets van.
+ */
+function initGoogleCalendarSilently() {
+    const stored = localStorage.getItem('google_consent_granted');
+    if (!stored) return;
+    const expiry = parseInt(stored, 10);
+    if (Date.now() >= expiry) {
+        localStorage.removeItem('google_consent_granted');
+        return;
+    }
+
+    // GIS nog niet klaar? Probeer opnieuw na korte vertraging
+    if (typeof google === 'undefined' || !google.accounts) {
+        setTimeout(initGoogleCalendarSilently, 800);
+        return;
+    }
+
+    const loginHint = localStorage.getItem('google_login_hint') || '';
+    googleTokenClient = google.accounts.oauth2.initTokenClient({
+        client_id: GOOGLE_CLIENT_ID,
+        scope: GOOGLE_SCOPES,
+        hint: loginHint,          // vertelt Google welk account te gebruiken
+        callback: (response) => {
+            if (!response.error) {
+                googleAccessToken = response.access_token;
+                setGoogleCalendarUI(true);
+            }
+            // Stille mislukking: geen melding, knop blijft op "Google Calendar"
+        },
+        error_callback: () => {}
+    });
+    // prompt: '' + hint = volledig stille verlenging zonder popup
+    googleTokenClient.requestAccessToken({ prompt: '' });
+}
+
+/**
+ * Haal bezette tijdsloten op voor een datum via FreeBusy API
+ * @param {string} dateStr - Datum in YYYY-MM-DD formaat
+ */
+async function checkGoogleAvailability(dateStr) {
+    const availEl = document.getElementById('google-availability');
+    availEl.style.display = 'block';
+    availEl.innerHTML = '<span class="text-muted"><i class="bi bi-hourglass-split"></i> Agenda ophalen...</span>';
+
+    try {
+        const timeMin = encodeURIComponent(new Date(dateStr + 'T00:00:00').toISOString());
+        const timeMax = encodeURIComponent(new Date(dateStr + 'T23:59:59').toISOString());
+        const res = await fetch(
+            `https://www.googleapis.com/calendar/v3/calendars/primary/events?timeMin=${timeMin}&timeMax=${timeMax}&singleEvents=true&orderBy=startTime`,
+            { headers: { Authorization: `Bearer ${googleAccessToken}` } }
+        );
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        const data = await res.json();
+        const events = (data.items || []).filter(ev => ev.status !== 'cancelled');
+
+        if (events.length === 0) {
+            availEl.innerHTML = '<span class="text-success"><i class="bi bi-check-circle"></i> Niets gepland die dag</span>';
+        } else {
+            const rows = events.map(ev => {
+                let timeLabel;
+                if (ev.start.date && !ev.start.dateTime) {
+                    timeLabel = '<span class="badge bg-secondary me-1">Hele dag</span>';
+                } else {
+                    const s = new Date(ev.start.dateTime).toLocaleTimeString('nl-NL', { hour: '2-digit', minute: '2-digit' });
+                    const e = new Date(ev.end.dateTime).toLocaleTimeString('nl-NL', { hour: '2-digit', minute: '2-digit' });
+                    timeLabel = `<span class="text-muted" style="min-width:90px;display:inline-block">${s}–${e}</span>`;
+                }
+                const title = ev.summary || '(Geen titel)';
+                return `<div class="d-flex align-items-center gap-1 py-1 border-bottom">${timeLabel}<span>${title}</span></div>`;
+            }).join('');
+            availEl.innerHTML = `<div class="border rounded p-2 bg-white mt-1">${rows}</div>`;
+        }
+    } catch (err) {
+        if (err.message.includes('401')) {
+            googleAccessToken = null;
+            availEl.innerHTML = '<span class="text-danger"><i class="bi bi-x-circle"></i> Sessie verlopen – koppel Google Calendar opnieuw</span>';
+        } else {
+            availEl.innerHTML = '<span class="text-danger"><i class="bi bi-x-circle"></i> Kan agenda niet ophalen</span>';
+        }
+    }
+}
+
+/**
+ * Bouw de start/end objecten voor een Google Calendar event
+ */
+function buildCalendarTimes(date, startTime, endTime) {
+    const tz = Intl.DateTimeFormat().resolvedOptions().timeZone;
+    if (startTime) {
+        // Zorg dat endTime altijd na startTime valt; standaard +1 uur
+        const endT = endTime || (function() {
+            const [h, m] = startTime.split(':').map(Number);
+            return `${String((h + 1) % 24).padStart(2, '0')}:${String(m).padStart(2, '0')}`;
+        })();
+        return {
+            start: { dateTime: `${date}T${startTime}:00`, timeZone: tz },
+            end:   { dateTime: `${date}T${endT}:00`,      timeZone: tz }
+        };
+    }
+    return { start: { date }, end: { date } };
+}
+
+/**
+ * Maak een Google Calendar event aan voor een geplande interactie
+ * @returns {string|null} Google Calendar event ID
+ */
+async function createCalendarEvent(calendarTitle, date, startTime, endTime, location, notes) {
+    if (!googleAccessToken) return null;
+    try {
+        const times = buildCalendarTimes(date, startTime, endTime);
+        const body = {
+            summary: calendarTitle,
+            description: notes || '',
+            ...times
+        };
+        if (location) body.location = location;
+        const res = await fetch('https://www.googleapis.com/calendar/v3/calendars/primary/events', {
+            method: 'POST',
+            headers: {
+                Authorization: `Bearer ${googleAccessToken}`,
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify(body)
+        });
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        const created = await res.json();
+        return created.id;
+    } catch (err) {
+        console.warn('Google Calendar event aanmaken mislukt:', err.message);
+        return null;
+    }
+}
+
+/**
+ * Bijwerken van een bestaand Google Calendar event
+ */
+async function updateCalendarEvent(eventId, calendarTitle, date, startTime, endTime, location, notes) {
+    if (!googleAccessToken || !eventId) return;
+    try {
+        const times = buildCalendarTimes(date, startTime, endTime);
+        const body = {
+            summary: calendarTitle,
+            description: notes || '',
+            ...times
+        };
+        if (location) body.location = location;
+        const res = await fetch(`https://www.googleapis.com/calendar/v3/calendars/primary/events/${eventId}`, {
+            method: 'PUT',
+            headers: {
+                Authorization: `Bearer ${googleAccessToken}`,
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify(body)
+        });
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    } catch (err) {
+        console.warn('Google Calendar event bijwerken mislukt:', err.message);
+    }
+}
+
+/**
+ * Verwijderen van een Google Calendar event
+ */
+async function deleteCalendarEvent(eventId) {
+    if (!googleAccessToken || !eventId) return;
+    try {
+        await fetch(`https://www.googleapis.com/calendar/v3/calendars/primary/events/${eventId}`, {
+            method: 'DELETE',
+            headers: { Authorization: `Bearer ${googleAccessToken}` }
+        });
+    } catch (err) {
+        console.warn('Google Calendar event verwijderen mislukt:', err.message);
+    }
+}
+
+// ─────────────────────────────────────────────
+
 /**
  * Delete an interaction
  * @param {string} contactId - The contact ID
@@ -1308,13 +1667,19 @@ async function deleteInteraction(contactId, interactionId) {
     if (!confirm('Weet je zeker dat je deze interactie wilt verwijderen?')) {
         return;
     }
-    
+
     const contactIndex = contactsData.findIndex(c => c.id === contactId);
     if (contactIndex === -1) return;
-    
+
     const contact = contactsData[contactIndex];
     if (!contact.interactions) return;
-    
+
+    // Verwijder Google Calendar event indien aanwezig
+    const interaction = contact.interactions.find(i => i.id === interactionId);
+    if (interaction && interaction.google_calendar_event_id) {
+        await deleteCalendarEvent(interaction.google_calendar_event_id);
+    }
+
     try {
         if (isSupabaseConfigured() && currentUser) {
             // Delete from Supabase
@@ -1323,13 +1688,13 @@ async function deleteInteraction(contactId, interactionId) {
                 .delete()
                 .eq('id', interactionId)
                 .eq('user_id', currentUser.id);
-            
+
             if (error) throw error;
         } else {
             // Save to localStorage
             saveContactsData();
         }
-        
+
         // Remove from local array
         contact.interactions = contact.interactions.filter(i => i.id !== interactionId);
         
@@ -1821,14 +2186,21 @@ async function handleLogout() {
     try {
         const { error } = await supabaseClient.auth.signOut();
         if (error) throw error;
-        
+
         // Clear local data
         contactsData = [];
         renderContacts();
-        
+
+        // Google Calendar ontkoppelen
+        googleAccessToken = null;
+        googleTokenClient = null;
+        localStorage.removeItem('google_consent_granted');
+        localStorage.removeItem('google_login_hint');
+        setGoogleCalendarUI(false);
+
         // Show auth modal again
         authModal.show();
-        
+
     } catch (error) {
         alert('Fout bij uitloggen: ' + error.message);
     }
