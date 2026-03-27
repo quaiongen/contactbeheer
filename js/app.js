@@ -1830,8 +1830,11 @@ function checkContactsDue() {
         return;
     }
     
-    // Find contacts that are due
-    const dueContacts = contactsData.filter(contact => isContactDue(contact));
+    // Find contacts that are overdue AND have no upcoming planned appointment
+    const dueContacts = contactsData.filter(contact => {
+        if (getNextFuturePlannedInteraction(contact)) return false;
+        return calculateTimePercentage(contact) >= 100;
+    });
     
     // Show notifications for due contacts (max 3 at a time)
     dueContacts.slice(0, 3).forEach(contact => {
