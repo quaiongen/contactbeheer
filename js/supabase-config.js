@@ -14,7 +14,7 @@
  */
 
 const SUPABASE_URL = 'https://ddifqouirbnmozaxkxwy.supabase.co'; // Bijvoorbeeld: https://xxxxxxxxxxxx.supabase.co
-const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImRkaWZxb3VpcmJubW96YXhreHd5Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjI3Nzg5MjMsImV4cCI6MjA3ODM1NDkyM30.ct2haiAyViMJoR7SfxRQu-V_IoQBRERphYiKfoVKb2A'; // Je anon/public key
+const SUPABASE_ANON_KEY = 'sb_publishable_uMrhHfqC3YAoFJt_DNX2_Q_DQvF1PuO'; // Je anon/public key
 
 // Initialize Supabase client (renamed to avoid conflict with global supabase from CDN)
 let supabaseClient = null;
