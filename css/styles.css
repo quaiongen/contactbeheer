@@ -170,9 +170,18 @@ body {
     position: relative;
 }
 
-.contact-card:hover {
+.clickable-card {
+    cursor: pointer;
+}
+
+.clickable-card:hover {
     transform: translateY(-4px);
     box-shadow: var(--shadow-lg);
+}
+
+.clickable-card:active {
+    transform: translateY(-2px);
+    box-shadow: var(--shadow);
 }
 
 .contact-name {
@@ -256,12 +265,12 @@ body {
 /* Card Actions */
 .card-actions {
     display: flex;
-    gap: 0.5rem;
+    gap: 0.6rem;
 }
 
 .action-btn {
     flex: 1;
-    padding: 0.5rem;
+    padding: 0.6rem 0.75rem;
     border: none;
     border-radius: var(--border-radius);
     cursor: pointer;
@@ -269,9 +278,16 @@ body {
     display: flex;
     align-items: center;
     justify-content: center;
-    gap: 0.25rem;
+    gap: 0.4rem;
     font-size: 0.875rem;
+    font-weight: 600;
     box-shadow: var(--shadow);
+    color: #fff !important;
+}
+
+.action-btn i {
+    color: #fff !important;
+    font-size: 1rem;
 }
 
 .action-btn:hover {
@@ -505,4 +521,439 @@ body {
 .color-option.selected {
     border-color: #333;
     transform: scale(1.1);
+}
+
+/* --- Unified GUI (Vandaag, Overzicht, Contacten, Details) --- */
+
+.avatar {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    color: white;
+    font-weight: 600;
+    border-radius: 50%;
+    flex-shrink: 0;
+    background: #8A93A0;
+    letter-spacing: 0.2px;
+}
+.avatar-sm { width: 32px; height: 32px; font-size: 12px; }
+.avatar-md { width: 36px; height: 36px; font-size: 13px; }
+.avatar-lg { width: 48px; height: 48px; font-size: 16px; }
+
+/* Gedeelde list-container (Overzicht en Contacten) */
+.glist {
+    border: 1px solid #E1E5EA;
+    border-radius: 10px;
+    overflow: hidden;
+    background: #ffffff;
+}
+.glist-row {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 12px;
+    border-bottom: 1px solid #EDF0F3;
+    background: #ffffff;
+    cursor: pointer;
+    transition: background-color 0.15s ease;
+}
+.glist-row:last-child { border-bottom: 0; }
+.glist-row:hover { background: #F4F6F8; }
+.glist-row .who-block {
+    min-width: 0;
+    flex: 1;
+}
+.glist-row .who {
+    font-size: 15px;
+    font-weight: 600;
+    color: #151A21;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+.glist-row .when {
+    font-size: 12px;
+    color: #5B6470;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    margin-top: 2px;
+}
+.glist-row .right {
+    font-size: 12.5px;
+    font-weight: 600;
+    text-align: right;
+    flex-shrink: 0;
+    white-space: nowrap;
+}
+.glist-row .right.late    { color: #B23B32; }
+.glist-row .right.soon    { color: #96661A; }
+.glist-row .right.planned { color: #2F5F8A; }
+.glist-row .right.quiet   { color: #8A93A0; }
+
+/* Bucket-kop in Overzicht */
+.overzicht-ghead {
+    display: flex;
+    gap: 8px;
+    align-items: center;
+    margin-bottom: 8px;
+    font-size: 14px;
+    font-weight: 650;
+    color: #151A21;
+}
+.overzicht-ghead .gdot {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    display: inline-block;
+}
+.overzicht-ghead .gcount {
+    color: #5B6470;
+    font-weight: 500;
+    font-size: 13px;
+    margin-left: 4px;
+}
+
+/* Vandaag-kaart met avatar */
+.vandaag-card {
+    background: #ffffff;
+    border: 1px solid #E1E5EA;
+    border-radius: 12px;
+    padding: 12px 14px;
+    margin-bottom: 10px;
+}
+.vandaag-card .v-head {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin-bottom: 4px;
+}
+.vandaag-card .v-name {
+    font-size: 15px;
+    font-weight: 600;
+    color: #151A21;
+    flex: 1;
+    min-width: 0;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+.vandaag-card .v-flag {
+    font-size: 11.5px;
+    font-weight: 600;
+    padding: 2px 8px;
+    border-radius: 12px;
+    color: #B23B32;
+    background: #FCF0EF;
+    white-space: nowrap;
+    flex-shrink: 0;
+}
+.vandaag-card .v-meta {
+    font-size: 12px;
+    color: #5B6470;
+    margin: 0 0 8px 46px;
+}
+.vandaag-card .v-attempt {
+    font-size: 12px;
+    color: #4A5568;
+    background: #F1F3F6;
+    border-radius: 6px;
+    padding: 5px 9px;
+    margin: 0 0 8px 46px;
+}
+.vandaag-card .v-reach {
+    display: flex;
+    gap: 6px;
+    margin-bottom: 8px;
+}
+.vandaag-card .v-reach button {
+    flex: 1;
+    padding: 8px 0;
+    font-size: 12.5px;
+    font-weight: 500;
+    border: 1px solid #E1E5EA;
+    border-radius: 8px;
+    background: #ffffff;
+    color: #151A21;
+    cursor: pointer;
+}
+.vandaag-card .v-reach button:disabled {
+    color: #8A93A0;
+    cursor: not-allowed;
+}
+.vandaag-card .v-primary {
+    display: block;
+    width: 100%;
+    padding: 10px 0;
+    background: #151A21;
+    color: white;
+    border: 0;
+    border-radius: 8px;
+    font-size: 13px;
+    font-weight: 600;
+    cursor: pointer;
+}
+
+/* Details-modal — nieuwe stijl */
+.details-top {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 12px 4px 16px;
+    border-bottom: 1px solid #EDF0F3;
+    margin-bottom: 12px;
+}
+.details-top .modal-name {
+    font-size: 17px;
+    font-weight: 700;
+    color: #151A21;
+    line-height: 1.2;
+}
+.details-top .modal-cat {
+    font-size: 12px;
+    color: #5B6470;
+    margin-top: 2px;
+}
+.details-flag {
+    display: inline-block;
+    padding: 3px 10px;
+    border-radius: 12px;
+    font-size: 12px;
+    font-weight: 600;
+    color: #B23B32;
+    background: #FCF0EF;
+    margin-bottom: 12px;
+}
+.details-flag.soon    { color: #96661A; background: #FBF4E8; }
+.details-flag.planned { color: #2F5F8A; background: #EFF4F9; }
+.details-flag.quiet   { color: #5B6470; background: #F1F3F6; }
+
+.details-info-row {
+    display: flex;
+    justify-content: space-between;
+    padding: 8px 0;
+    border-bottom: 1px solid #EDF0F3;
+    font-size: 13.5px;
+}
+.details-info-row:last-child { border-bottom: 0; }
+.details-info-row .info-label { color: #5B6470; }
+.details-info-row .info-value { color: #151A21; font-weight: 500; text-align: right; }
+.details-info-row .info-value a { color: #151A21; text-decoration: none; }
+.details-info-row .info-value a:hover { text-decoration: underline; }
+
+.details-attempt-line {
+    background: #F1F3F6;
+    color: #4A5568;
+    padding: 8px 12px;
+    border-radius: 8px;
+    font-size: 12.5px;
+    margin: 12px 0;
+}
+
+.details-action-block {
+    margin-top: 16px;
+    padding-top: 16px;
+    border-top: 1px solid #EDF0F3;
+}
+.details-action-label {
+    font-size: 11px;
+    color: #5B6470;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    margin-bottom: 8px;
+    font-weight: 600;
+}
+.details-reach-row {
+    display: flex;
+    gap: 6px;
+    margin-bottom: 10px;
+}
+.details-reach-row button {
+    flex: 1;
+    padding: 8px 0;
+    font-size: 12.5px;
+    font-weight: 500;
+    border: 1px solid #E1E5EA;
+    border-radius: 8px;
+    background: #ffffff;
+    color: #151A21;
+    cursor: pointer;
+}
+.details-reach-row button:disabled {
+    color: #8A93A0;
+    cursor: not-allowed;
+}
+.details-primary-btn {
+    display: block;
+    width: 100%;
+    padding: 12px 0;
+    background: #151A21;
+    color: white;
+    border: 0;
+    border-radius: 8px;
+    font-size: 13.5px;
+    font-weight: 600;
+    cursor: pointer;
+}
+
+.history-section {
+    margin-top: 20px;
+    padding-top: 16px;
+    border-top: 1px solid #EDF0F3;
+}
+.history-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 10px;
+}
+.history-title { font-size: 13.5px; font-weight: 600; color: #151A21; }
+.history-count { font-size: 11.5px; color: #5B6470; }
+.history-item {
+    display: flex;
+    gap: 10px;
+    padding: 10px 8px;
+    border-bottom: 1px solid #EDF0F3;
+    cursor: pointer;
+    border-radius: 6px;
+    background: none;
+    border-left: 0;
+    border-right: 0;
+    text-align: left;
+    width: 100%;
+    font: inherit;
+    color: inherit;
+}
+.history-item:last-child { border-bottom: 0; }
+.history-item:hover { background: #F4F6F8; }
+.history-icon { color: #5B6470; flex-shrink: 0; width: 22px; text-align: center; margin-top: 2px; }
+.history-icon.upcoming { color: #2F5F8A; }
+.history-body { flex: 1; min-width: 0; }
+.history-date { font-weight: 600; color: #151A21; font-size: 13px; }
+.history-detail { font-size: 12px; color: #5B6470; margin-top: 1px; }
+.history-chevron { color: #C6CCD4; align-self: center; font-size: 16px; }
+.history-badge-upcoming {
+    display: inline-block;
+    padding: 1px 6px;
+    border-radius: 8px;
+    font-size: 10px;
+    color: #2F5F8A;
+    background: #EFF4F9;
+    font-weight: 600;
+    margin-left: 6px;
+    vertical-align: 1px;
+}
+.history-load-more {
+    display: block;
+    width: 100%;
+    margin-top: 10px;
+    padding: 10px;
+    background: #F4F6F8;
+    border: 0;
+    border-radius: 8px;
+    font-size: 12.5px;
+    font-weight: 500;
+    color: #151A21;
+    cursor: pointer;
+}
+
+.details-footer-row {
+    display: flex;
+    gap: 8px;
+    margin-top: 16px;
+    padding-top: 16px;
+    border-top: 1px solid #EDF0F3;
+}
+.details-footer-row button {
+    flex: 1;
+    padding: 10px 0;
+    font-size: 13px;
+    font-weight: 500;
+    border: 1px solid #E1E5EA;
+    background: #ffffff;
+    border-radius: 8px;
+    color: #151A21;
+    cursor: pointer;
+}
+
+/* Override globale .btn width: 100% op mobiel voor onze compacte containers */
+#category-filters .btn {
+    width: auto !important;
+    flex-shrink: 0;
+    box-shadow: none;
+}
+#category-filters .btn:hover {
+    transform: none;
+    box-shadow: none;
+}
+.vandaag-card .v-reach button,
+.details-reach-row button,
+.details-footer-row button {
+    width: auto !important;
+    box-shadow: none;
+    padding: 8px 4px;
+}
+.vandaag-card .v-primary,
+.details-primary-btn {
+    box-shadow: none;
+}
+.vandaag-card .v-reach button:hover,
+.details-reach-row button:hover,
+.details-footer-row button:hover,
+.vandaag-card .v-primary:hover,
+.details-primary-btn:hover {
+    transform: none;
+    box-shadow: none;
+}
+.history-load-more,
+.history-load-more:hover {
+    transform: none !important;
+    box-shadow: none !important;
+}
+
+/* Reach-knoppen zonder onderliggend gegeven: visueel gedimd,
+   maar wél klikbaar zodat we een uitleg-melding kunnen tonen. */
+.vandaag-card .v-reach button.is-disabled,
+.details-reach-row button.is-disabled {
+    color: #8A93A0;
+    background: #F4F6F8;
+    cursor: pointer;
+}
+
+/* Melding onder de reach-row bij ontbrekende gegevens. */
+.missing-info {
+    font-size: 12.5px;
+    color: #4A5568;
+    background: #FFF7E6;
+    border: 1px solid #F5D9A6;
+    border-radius: 8px;
+    padding: 8px 10px;
+    margin: 0 0 10px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    flex-wrap: wrap;
+}
+.missing-info-edit {
+    background: #151A21;
+    color: white;
+    border: 0;
+    padding: 5px 12px;
+    border-radius: 6px;
+    font-size: 12px;
+    font-weight: 600;
+    cursor: pointer;
+    white-space: nowrap;
+    box-shadow: none;
+    width: auto !important;
+}
+.missing-info-edit:hover {
+    transform: none;
+    box-shadow: none;
+}
+
+/* Consistente heading-weight tussen appbar-title en modal-titles. */
+header h1.h5 {
+    font-weight: 600;
 }

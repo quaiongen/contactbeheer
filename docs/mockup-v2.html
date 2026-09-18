@@ -1,0 +1,325 @@
+<!DOCTYPE html>
+<html lang="nl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Contactbeheer — mockup v2</title>
+<style>
+  :root{
+    --ink:#151A21;
+    --ink-soft:#5B6470;
+    --ink-faint:#8A93A0;
+    --paper:#fff;
+    --canvas:#EEF0F3;
+    --line:#E1E5EA;
+    --line-soft:#EDF0F3;
+    --late:#B23B32;
+    --late-bg:#FCF0EF;
+    --soon:#96661A;
+    --soon-bg:#FBF4E8;
+    --planned:#2F5F8A;
+    --planned-bg:#EFF4F9;
+    --try:#4A5568;
+    --try-bg:#F1F3F6;
+    --radius:14px;
+    --sans:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,"Helvetica Neue",Arial,sans-serif;
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0}
+  body{font-family:var(--sans);background:var(--canvas);color:var(--ink);
+    -webkit-font-smoothing:antialiased;padding:34px 20px 70px;line-height:1.45}
+  .wrap{max-width:1180px;margin:0 auto}
+  .intro{max-width:58ch;margin-bottom:34px}
+  .intro h1{font-size:25px;font-weight:650;letter-spacing:-.4px;margin:0 0 8px}
+  .intro p{margin:0;color:var(--ink-soft);font-size:15px}
+  .stage{display:flex;gap:44px;align-items:flex-start;flex-wrap:wrap}
+  .col{flex:1 1 330px;min-width:310px;max-width:392px}
+  .col > h2{font-size:13px;font-weight:650;margin:0 0 3px}
+  .col > p.sub{margin:0 0 14px;font-size:13px;color:var(--ink-faint);max-width:38ch}
+
+  .phone{background:#0E1116;border-radius:38px;padding:9px;
+    box-shadow:0 18px 44px -16px rgba(16,22,32,.42)}
+  .screen{background:var(--paper);border-radius:30px;overflow:hidden;height:690px;
+    display:flex;flex-direction:column;position:relative}
+  .statusbar{display:flex;justify-content:space-between;align-items:center;
+    padding:11px 22px 4px;font-size:11px;color:var(--ink-faint);font-variant-numeric:tabular-nums}
+  .appbar{display:flex;align-items:center;justify-content:space-between;
+    padding:6px 16px 12px;border-bottom:1px solid var(--line-soft)}
+  .appbar .title{font-size:19px;font-weight:660;letter-spacing:-.3px}
+  .appbar .menu{width:32px;height:32px;border-radius:9px;border:1px solid var(--line);
+    background:var(--paper);display:grid;place-items:center;color:var(--ink-soft);font-size:14px;cursor:pointer}
+  .tabs{display:flex;gap:4px;padding:10px 16px 0}
+  .tab{flex:1;text-align:center;padding:7px 0 9px;font-size:13px;font-weight:600;
+    color:var(--ink-faint);border-bottom:2px solid transparent;cursor:pointer;
+    background:none;border-top:0;border-left:0;border-right:0;font-family:inherit}
+  .tab[aria-selected="true"]{color:var(--ink);border-bottom-color:var(--ink)}
+  .body{flex:1;overflow-y:auto;padding:14px 16px 26px}
+
+  .daylead{margin:0 0 3px;font-size:15px;font-weight:620}
+  .daysub{margin:0 0 16px;font-size:13px;color:var(--ink-faint)}
+  .card{border:1px solid var(--line);border-radius:var(--radius);padding:13px 14px 12px;
+    margin-bottom:11px;background:var(--paper);transition:opacity .24s ease, transform .24s ease}
+  .card .top{display:flex;justify-content:space-between;align-items:baseline;gap:10px}
+  .card .name{font-size:16px;font-weight:625;letter-spacing:-.2px}
+  .flag{font-size:11.5px;font-weight:650;white-space:nowrap;padding:2px 7px;border-radius:20px}
+  .flag.late{color:var(--late);background:var(--late-bg)}
+  .flag.soon{color:var(--soon);background:var(--soon-bg)}
+  .meta{margin:5px 0 0;font-size:12.5px;color:var(--ink-faint)}
+  .attempt{margin:9px 0 0;font-size:12.5px;font-weight:580;color:var(--try);
+    background:var(--try-bg);border-radius:8px;padding:6px 9px;display:none}
+  .attempt.on{display:block}
+  .reach{display:flex;gap:7px;margin:11px 0 0}
+  .reach button{flex:1;font-family:inherit;font-size:13px;font-weight:600;color:var(--ink);
+    border:1px solid var(--line);border-radius:9px;padding:8px 0;background:var(--paper);cursor:pointer}
+  .reach button:active{background:var(--canvas)}
+  .reach button.used{color:var(--ink-faint);border-style:dashed}
+  .primary{display:block;width:100%;margin-top:7px;font-family:inherit;font-size:13.5px;
+    font-weight:640;border:0;border-radius:9px;padding:10px 0;background:var(--ink);
+    color:#fff;cursor:pointer}
+  .card.done{opacity:0;transform:scale(.97);pointer-events:none}
+  .restnote{margin:18px 0 0;font-size:12.5px;color:var(--ink-faint)}
+  .emptyday{margin-top:26px;padding:22px 18px;border:1px dashed var(--line);
+    border-radius:var(--radius);text-align:center;color:var(--ink-soft);font-size:14px;display:none}
+  .emptyday strong{display:block;color:var(--ink);font-weight:625;margin-bottom:4px;font-size:15px}
+
+  .group{margin-bottom:20px}
+  .ghead{display:flex;align-items:center;gap:8px;margin-bottom:9px}
+  .gdot{width:7px;height:7px;border-radius:50%;flex:none}
+  .gdot.late{background:var(--late)} .gdot.soon{background:var(--soon)}
+  .gdot.planned{background:var(--planned)} .gdot.quiet{background:#C6CCD4}
+  .gtitle{font-size:13.5px;font-weight:650}
+  .gcount{font-size:13px;color:var(--ink-faint);font-variant-numeric:tabular-nums}
+  .glist{border:1px solid var(--line);border-radius:var(--radius);overflow:hidden}
+  .row{display:flex;align-items:center;justify-content:space-between;gap:10px;
+    padding:11px 13px;border-bottom:1px solid var(--line-soft);background:var(--paper)}
+  .row:last-child{border-bottom:0}
+  .row .who{font-size:14.5px;font-weight:580}
+  .row .when{font-size:12.5px;color:var(--ink-faint);margin-top:1px}
+  .row .right{font-size:12.5px;font-weight:620;white-space:nowrap}
+  .right.late{color:var(--late)} .right.soon{color:var(--soon)} .right.planned{color:var(--planned)}
+  .collapsed{border:1px solid var(--line);border-radius:var(--radius);padding:12px 13px;
+    font-size:13.5px;color:var(--ink-soft);background:var(--paper);cursor:pointer;
+    display:flex;justify-content:space-between;align-items:center}
+
+  .mail{max-width:392px}
+  .mailcard{background:var(--paper);border:1px solid var(--line);border-radius:var(--radius);
+    padding:18px 18px 20px}
+  .mailsub{font-size:15px;font-weight:640;margin:0 0 2px}
+  .mailfrom{font-size:12.5px;color:var(--ink-faint);margin:0 0 15px}
+  .mailline{font-size:14px;margin:0 0 14px}
+  .maillist{margin:0 0 16px;padding:0;list-style:none}
+  .maillist li{font-size:13.5px;padding:7px 0;border-bottom:1px solid var(--line-soft);
+    display:flex;justify-content:space-between;gap:10px}
+  .maillist li:last-child{border-bottom:0}
+  .maillist .d{color:var(--late);font-weight:620;white-space:nowrap}
+  .mailfoot{font-size:12.5px;color:var(--ink-soft);margin:0}
+  .mailcta{display:inline-block;margin:4px 0 14px;font-size:13.5px;font-weight:640;
+    background:var(--ink);color:#fff;text-decoration:none;padding:9px 16px;border-radius:9px}
+
+  .notes h3{font-size:13px;font-weight:650;margin:0 0 12px}
+  .note{border-left:2px solid var(--ink);padding:0 0 0 12px;margin-bottom:18px}
+  .note b{display:block;font-size:13.5px;font-weight:625;margin-bottom:3px}
+  .note span{font-size:13px;color:var(--ink-soft)}
+  @media (max-width:760px){
+    body{padding:22px 14px 50px}
+    .stage{gap:30px}
+    .col,.mail{max-width:none}
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <div class="intro">
+    <h1>Contactbeheer — voorstel v2</h1>
+    <p>Bellen, WhatsApp en Mail loggen stil een poging: de teller blijft rood, maar de app onthoudt dat je het geprobeerd hebt. Alleen een afspraak haalt iemand van de lijst. Probeer het: tik eerst WhatsApp, dan Nu afspraak maken.</p>
+  </div>
+
+  <div class="stage">
+
+    <!-- VANDAAG -->
+    <div class="col">
+      <h2>1. Vandaag</h2>
+      <p class="sub">Waar je in landt vanuit de mail. Maximaal drie mensen.</p>
+      <div class="phone"><div class="screen">
+        <div class="statusbar"><span>10:49</span><span>contactbeheer</span></div>
+        <div class="appbar">
+          <div class="title">Vandaag</div>
+          <div class="menu" title="Contacten, categorieën, import/export, uitloggen">☰</div>
+        </div>
+        <div class="tabs">
+          <button class="tab" aria-selected="true">Vandaag</button>
+          <button class="tab" aria-selected="false" onclick="alert('In de echte app: het volledige contactenoverzicht.')">Contacten</button>
+        </div>
+        <div class="body">
+          <p class="daylead">Drie mensen wachten te lang</p>
+          <p class="daysub">Meest verlopen bovenaan. Morgen schuiven de volgende door.</p>
+
+          <div class="card" id="c1">
+            <div class="top"><div class="name">Kristiaan Soomers</div>
+              <div class="flag late">145 dagen te laat</div></div>
+            <p class="meta">Netwerk · laatste contact 24 okt 2025 · elke 180 dagen</p>
+            <p class="attempt" id="a1"></p>
+            <div class="reach">
+              <button onclick="attempt('c1','gebeld',this)">Bellen</button>
+              <button onclick="attempt('c1','geappt',this)">WhatsApp</button>
+              <button onclick="attempt('c1','gemaild',this)">Mail</button>
+            </div>
+            <button class="primary" onclick="plan('c1','Kristiaan Soomers')">Nu afspraak maken</button>
+          </div>
+
+          <div class="card" id="c2">
+            <div class="top"><div class="name">Remco Putker</div>
+              <div class="flag late">40 dagen te laat</div></div>
+            <p class="meta">Netwerk · laatste contact 7 feb 2026 · elke 180 dagen</p>
+            <p class="attempt on" id="a2">Geappt, 4 dagen geleden</p>
+            <div class="reach">
+              <button onclick="attempt('c2','gebeld',this)">Bellen</button>
+              <button class="used" onclick="attempt('c2','geappt',this)">WhatsApp</button>
+              <button onclick="attempt('c2','gemaild',this)">Mail</button>
+            </div>
+            <button class="primary" onclick="plan('c2','Remco Putker')">Nu afspraak maken</button>
+          </div>
+
+          <div class="card" id="c3">
+            <div class="top"><div class="name">Pokeravondje</div>
+              <div class="flag soon">11 dagen te laat</div></div>
+            <p class="meta">Fun · laatste contact 8 mrt 2026 · elke 180 dagen</p>
+            <p class="attempt" id="a3"></p>
+            <div class="reach">
+              <button onclick="attempt('c3','gebeld',this)">Bellen</button>
+              <button onclick="attempt('c3','geappt',this)">WhatsApp</button>
+              <button onclick="attempt('c3','gemaild',this)">Mail</button>
+            </div>
+            <button class="primary" onclick="plan('c3','Pokeravondje')">Nu afspraak maken</button>
+          </div>
+
+          <p class="restnote" id="restnote">Nog 4 contacten staan te lang open.</p>
+          <div class="emptyday" id="emptyday">
+            <strong>Klaar voor vandaag</strong>
+            Drie afspraken staan in je agenda. Morgen schuiven de volgende door.
+          </div>
+        </div>
+      </div></div>
+    </div>
+
+    <!-- OVERZICHT -->
+    <div class="col">
+      <h2>2. Totaaloverzicht</h2>
+      <p class="sub">Gebundeld op wat er moet gebeuren. Pogingen zijn zichtbaar zonder de urgentie te wissen.</p>
+      <div class="phone"><div class="screen">
+        <div class="statusbar"><span>10:49</span><span>contactbeheer</span></div>
+        <div class="appbar"><div class="title">Overzicht</div><div class="menu">☰</div></div>
+        <div class="body">
+
+          <div class="group">
+            <div class="ghead"><span class="gdot late"></span><span class="gtitle">Nu een afspraak maken</span><span class="gcount">3</span></div>
+            <div class="glist">
+              <div class="row"><div><div class="who">Kristiaan Soomers</div><div class="when">Netwerk · 325 dagen geen contact</div></div><div class="right late">145 te laat</div></div>
+              <div class="row"><div><div class="who">Remco Putker</div><div class="when">Geappt, 4 dagen geleden</div></div><div class="right late">40 te laat</div></div>
+              <div class="row"><div><div class="who">Pokeravondje</div><div class="when">Fun · 191 dagen geen contact</div></div><div class="right late">11 te laat</div></div>
+            </div>
+          </div>
+
+          <div class="group">
+            <div class="ghead"><span class="gdot soon"></span><span class="gtitle">Binnen twee weken</span><span class="gcount">2</span></div>
+            <div class="glist">
+              <div class="row"><div><div class="who">Li Ying Tjeng</div><div class="when">Netwerk · elke 180 dagen</div></div><div class="right soon">over 4 dagen</div></div>
+              <div class="row"><div><div class="who">Bart Lutmers</div><div class="when">Vrienden · elke 70 dagen</div></div><div class="right soon">over 9 dagen</div></div>
+            </div>
+          </div>
+
+          <div class="group">
+            <div class="ghead"><span class="gdot planned"></span><span class="gtitle">Afspraak staat al</span><span class="gcount">5</span></div>
+            <div class="glist">
+              <div class="row"><div><div class="who">Henk Huurman</div><div class="when">Koffie bij RWS</div></div><div class="right planned">do 11:30</div></div>
+              <div class="row"><div><div class="who">Eamon Trompert</div><div class="when">Kennismaking, videogesprek</div></div><div class="right planned">vr 14:00</div></div>
+              <div class="row"><div><div class="who">Marjolein Vos</div><div class="when">Lunch, Utrecht CS</div></div><div class="right planned">ma 12:30</div></div>
+              <div class="row"><div><div class="who">Sander Beek</div><div class="when">Telefonisch</div></div><div class="right planned">24 sep</div></div>
+              <div class="row"><div><div class="who">Aisha Mansour</div><div class="when">Borrel netwerkclub</div></div><div class="right planned">2 okt</div></div>
+            </div>
+          </div>
+
+          <div class="group">
+            <div class="ghead"><span class="gdot quiet"></span><span class="gtitle">Geprobeerd, nog geen reactie</span><span class="gcount">2</span></div>
+            <div class="glist">
+              <div class="row"><div><div class="who">Youssef Karimi</div><div class="when">Gemaild 9 dagen geleden</div></div><div class="right">opnieuw?</div></div>
+              <div class="row"><div><div class="who">Marieke Aalbers</div><div class="when">Gebeld 12 dagen geleden</div></div><div class="right">opnieuw?</div></div>
+            </div>
+          </div>
+
+          <div class="group">
+            <div class="ghead"><span class="gdot quiet"></span><span class="gtitle">Nooit contact gehad</span><span class="gcount">2</span></div>
+            <div class="glist">
+              <div class="row"><div><div class="who">Lennard de Groot</div><div class="when">Netwerk · toegevoegd 3 mrt</div></div><div class="right">starten</div></div>
+              <div class="row"><div><div class="who">Jelle Prins</div><div class="when">Zakelijk · toegevoegd 21 aug</div></div><div class="right">starten</div></div>
+            </div>
+          </div>
+
+          <div class="collapsed" onclick="alert('Klapt open naar de gewone contactenlijst.')">
+            <span>Op schema</span><span>12 →</span>
+          </div>
+        </div>
+      </div></div>
+    </div>
+
+    <!-- MAIL -->
+    <div class="col mail">
+      <h2>3. De maandagmail</h2>
+      <p class="sub">Route 1. Afspraken tellen mee als één regel, niet als lijst.</p>
+      <div class="mailcard">
+        <p class="mailsub">3 mensen wachten te lang</p>
+        <p class="mailfrom">Contactbeheer · maandag 09:00</p>
+        <p class="mailline">Deze drie staan bovenaan:</p>
+        <ul class="maillist">
+          <li><span>Kristiaan Soomers</span><span class="d">145 te laat</span></li>
+          <li><span>Remco Putker<br><span style="color:var(--ink-faint);font-weight:400">geappt, 4 dagen geleden</span></span><span class="d">40 te laat</span></li>
+          <li><span>Pokeravondje</span><span class="d">11 te laat</span></li>
+        </ul>
+        <a class="mailcta" href="#" onclick="return false;">Openen</a>
+        <p class="mailfoot">5 afspraken staan al in je agenda · 12 contacten op schema · 2 wachten op een reactie</p>
+      </div>
+
+      <div class="notes" style="margin-top:32px">
+        <h3>Wat er veranderd is</h3>
+        <div class="note"><b>Nu afspraak maken is de hoofdactie</b>
+          <span>Het doel is niet gesproken hebben maar weer iets in de agenda. Dit gebruikt je bestaande Calendar-koppeling.</span></div>
+        <div class="note"><b>Een poging is geen contact</b>
+          <span>Bellen of appen zet de teller niet op nul. Hij blijft rood, met een regel erbij over wat je al geprobeerd hebt.</span></div>
+        <div class="note"><b>De regel meldt een feit, geen conclusie</b>
+          <span>Alleen "Geappt, 4 dagen geleden". Dat er nog geen afspraak is, zegt de bak waar hij in staat al — dus kan die tekst nooit achterlopen.</span></div>
+        <div class="note"><b>Later en Gesproken zijn weg</b>
+          <span>Alleen een afspraak haalt iemand van de lijst. Dat is precies wat er in de praktijk gebeurt.</span></div>
+        <div class="note"><b>Geprobeerd, nog geen reactie</b>
+          <span>Een eigen bak in het overzicht. Hier hoef je niet te bellen maar te beslissen: nog wachten of nog eens proberen.</span></div>
+      </div>
+    </div>
+
+  </div>
+</div>
+
+<script>
+  var texts = {c1:'Kristiaan', c2:'Remco', c3:'de groep'};
+  var remaining = 3;
+
+  function attempt(id, verb, btn){
+    var p = document.getElementById('a' + id.slice(1));
+    p.textContent = verb.charAt(0).toUpperCase() + verb.slice(1) + ', vandaag';
+    p.classList.add('on');
+    btn.classList.add('used');
+  }
+
+  function plan(id, name){
+    var el = document.getElementById(id);
+    if(!el || el.classList.contains('done')) return;
+    el.classList.add('done');
+    setTimeout(function(){ el.style.display = 'none'; }, 250);
+    remaining--;
+    if(remaining === 0){
+      document.getElementById('restnote').style.display = 'none';
+      document.getElementById('emptyday').style.display = 'block';
+    }
+  }
+</script>
+</body>
+</html>
