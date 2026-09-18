@@ -16,8 +16,8 @@ const contactForm = document.getElementById('contact-form');
 const customFieldsContainer = document.getElementById('custom-fields-container');
 const addFieldBtn = document.getElementById('add-field-btn');
 const saveInteractionBtn = document.getElementById('save-interaction-btn');
-const deleteContactBtn = document.getElementById('delete-contact-btn');
-const editContactBtn = document.getElementById('edit-contact-btn');
+// details-modal delete/edit-knoppen zitten nu inline in de dynamisch
+// opgebouwde details-body; geen top-level refs meer nodig.
 const exportDataBtn = document.getElementById('export-data-btn');
 const importDataBtn = document.getElementById('import-data-btn');
 const importFileInput = document.getElementById('import-file-input');
@@ -125,10 +125,22 @@ document.addEventListener('DOMContentLoaded', function() {
     });
 
     // Google Calendar button
-    document.getElementById('google-calendar-btn').addEventListener('click', connectGoogleCalendar);
+    document.getElementById('google-calendar-btn').addEventListener('click', () => connectGoogleCalendar());
+
+    // Bestaande verbinding? Markeer dat deze browser ooit gekoppeld is
+    // geweest, ook voor gebruikers van vóór deze feature.
+    if (localStorage.getItem('google_consent_granted')) {
+        localStorage.setItem('google_calendar_ever_connected', 'true');
+    }
 
     // Stille token-vernieuwing na page load (GIS script moet eerst klaar zijn)
     window.addEventListener('load', initGoogleCalendarSilently);
+
+    // Reconnect-prompt (getoond bij nieuwe afspraak zonder actieve verbinding)
+    const reconnectBtn = document.getElementById('calendar-reconnect-btn');
+    const skipBtn = document.getElementById('calendar-skip-btn');
+    if (reconnectBtn) reconnectBtn.addEventListener('click', handleCalendarReconnectClick);
+    if (skipBtn) skipBtn.addEventListener('click', handleCalendarSkipClick);
 
     // Date change in interaction modal → check availability
     document.getElementById('interaction-date').addEventListener('change', function() {
@@ -249,23 +261,15 @@ function setupEventListeners() {
     // Save interaction button
     saveInteractionBtn.addEventListener('click', saveInteraction);
     
-    // Delete contact button
-    deleteContactBtn.addEventListener('click', function() {
-        const contactId = this.getAttribute('data-id');
-        deleteContact(contactId);
-        detailsModal.hide();
-    });
-    
-    // Edit contact button
-    editContactBtn.addEventListener('click', function() {
-        const contactId = this.getAttribute('data-id');
-        editContact(contactId);
-        detailsModal.hide();
-    });
-    
     // Current date for interaction modal
+    // Bij openen van een nieuwe (lege) afspraak defaulten we op vandaag.
+    // Bij bewerken heeft showInteractionModal de datum al gezet — dan
+    // niet overschrijven.
     document.getElementById('interaction-modal').addEventListener('show.bs.modal', function() {
-        document.getElementById('interaction-date').valueAsDate = new Date();
+        const dateEl = document.getElementById('interaction-date');
+        if (!dateEl.value) {
+            dateEl.valueAsDate = new Date();
+        }
     });
     
     // Export data button
@@ -286,6 +290,17 @@ function setupEventListeners() {
             currentSortMethod = this.value;
             renderContacts();
         });
+    }
+
+    // Hoofdtabs: Vandaag | Overzicht | Contacten
+    document.querySelectorAll('#main-tabs [data-view]').forEach(btn => {
+        btn.addEventListener('click', () => switchMainTab(btn.dataset.view));
+    });
+
+    // "Op schema" in Overzicht springt naar Contacten
+    const opSchemaCard = document.getElementById('overzicht-op-schema');
+    if (opSchemaCard) {
+        opSchemaCard.addEventListener('click', () => switchMainTab('contacten'));
     }
 }
 
@@ -314,41 +329,20 @@ function renderContacts() {
     // Show or hide no contacts message
     if (filtered.length === 0) {
         noContactsMessage.style.display = 'block';
+        if (typeof renderVandaag === 'function') renderVandaag();
+        if (typeof renderOverzicht === 'function') renderOverzicht();
         return;
     } else {
         noContactsMessage.style.display = 'none';
     }
 
-    // Sort contacts based on current method
-    if (currentSortMethod === 'planned') {
-        filtered.sort((a, b) => {
-            // Check for future planned interactions
-            const aPlanned = getNextFuturePlannedInteraction(a);
-            const bPlanned = getNextFuturePlannedInteraction(b);
-
-            // If both have planned interactions, sort by date (earliest first)
-            if (aPlanned && bPlanned) {
-                return new Date(aPlanned.date) - new Date(bPlanned.date);
-            }
-
-            // If only a has planned interaction, it comes first
-            if (aPlanned) return -1;
-
-            // If only b has planned interaction, it comes first
-            if (bPlanned) return 1;
-
-            // If neither has planned interaction, sort by urgency (default fallback)
-            const aPercentage = calculateTimePercentage(a);
-            const bPercentage = calculateTimePercentage(b);
-            return bPercentage - aPercentage;
-        });
+    // Sort: 'urgency' (default) = meest te laat bovenaan (urgencyRank uit
+    // lib.js). 'name' = alfabetisch, locale-aware Nederlands.
+    const sortToday = startOfDay(new Date());
+    if (currentSortMethod === 'name') {
+        filtered.sort((a, b) => a.name.localeCompare(b.name, 'nl', { sensitivity: 'base' }));
     } else {
-        // Default: Sort by urgency (those who need contact soonest first)
-        filtered.sort((a, b) => {
-            const aPercentage = calculateTimePercentage(a);
-            const bPercentage = calculateTimePercentage(b);
-            return bPercentage - aPercentage;
-        });
+        filtered.sort((a, b) => urgencyRank(b, sortToday) - urgencyRank(a, sortToday));
     }
 
     // Create and append contact cards
@@ -356,6 +350,10 @@ function renderContacts() {
         const contactCard = createContactCard(contact);
         contactsContainer.appendChild(contactCard);
     });
+
+    // Vandaag-view en Overzicht-view meerenderen (stap 4-5)
+    if (typeof renderVandaag === 'function') renderVandaag();
+    if (typeof renderOverzicht === 'function') renderOverzicht();
 }
 
 /**
@@ -397,149 +395,37 @@ function getNextFuturePlannedInteraction(contact) {
  * @param {Object} contact - The contact data
  * @returns {HTMLElement} - The contact card element
  */
-function createContactCard(contact) {
-    const col = document.createElement('div');
-    col.className = 'col-md-4 col-lg-3 fade-in';
-    
-    // Check for upcoming planned interactions
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
-    
-    const plannedInteractions = contact.interactions ? contact.interactions.filter(i => {
-        if (!i.planned) return false;
-        const date = new Date(i.date);
-        return date >= today;
-    }) : [];
-    
-    const hasPlannedInteraction = plannedInteractions.length > 0;
-    
-    let nextPlannedInteraction;
-    let daysUntilPlanned;
-    let plannedPercentage;
-    
-    if (hasPlannedInteraction) {
-        // Sort by date (earliest first)
-        plannedInteractions.sort((a, b) => new Date(a.date) - new Date(b.date));
-        nextPlannedInteraction = plannedInteractions[0];
-        daysUntilPlanned = calculateDaysUntilDate(nextPlannedInteraction.date);
-        
-        // Calculate percentage for progress bar: 0% when created → 100% on appointment date
-        const plannedDate = new Date(nextPlannedInteraction.date);
-        const createdAt = nextPlannedInteraction.created_at
-            ? new Date(nextPlannedInteraction.created_at)
-            : new Date(plannedDate.getTime() - 30 * 24 * 60 * 60 * 1000); // fallback: 30 dagen ervoor
-
-        const totalDays = (plannedDate - createdAt) / (1000 * 60 * 60 * 24);
-        const daysElapsed = (today - createdAt) / (1000 * 60 * 60 * 24);
-        plannedPercentage = totalDays > 0
-            ? Math.min(100, Math.max(0, (daysElapsed / totalDays) * 100))
-            : 100;
-    }
-    
-    // Calculate regular contact timing and status (for non-planned interactions)
-    const daysSinceLastContact = calculateDaysSinceLastContact(contact);
-    const contactFrequency = contact.frequency || 30; // Default to 30 days if not set
-    const percentage = calculateTimePercentage(contact);
-    const contactStatus = getContactStatus(percentage);
-    
-    // Get category info
+// Contacten-tab: subtekst + right-label per contact.
+function contactenRowSubtext(contact) {
     const category = contact.categoryId ? getCategoryById(contact.categoryId) : null;
-    const categoryColor = category ? category.color : 'transparent';
-    const categoryName = category ? category.name : '';
+    const catText = category ? category.name : '';
+    const freq = contact.frequency || 30;
+    return catText ? `${catText} · elke ${freq} dagen` : `elke ${freq} dagen`;
+}
 
-    // Create card HTML structure
-    const cardHtml = `
-        <div class="card contact-card clickable-card" style="${category ? `border-top: 5px solid ${categoryColor};` : ''} cursor: pointer;">
-            <div class="card-header d-flex justify-content-between align-items-center bg-white">
-                <h5 class="contact-name m-0">${contact.name}</h5>
-            </div>
-            <div class="card-body">
-                ${category ? `<span class="badge mb-2" style="background-color: ${categoryColor}">${categoryName}</span>` : ''}
-                <div class="contact-info">
-                <div class="contact-info">
-                    ${contact.birthday ? `<p><i class="bi bi-calendar-heart"></i> ${formatDate(contact.birthday)}</p>` : ''}
-                    
-                    <span class="last-contact">
-                        ${contact.interactions && contact.interactions.length > 0 
-                            ? `<i class="bi bi-clock-history"></i> Laatste contact: ${formatLastContactDate(contact)}`
-                            : '<i class="bi bi-exclamation-circle"></i> Nog geen contact gehad'}
-                    </span>
-                    
-                    <span class="contact-frequency">
-                        <i class="bi bi-arrow-repeat"></i> Gewenst: elke ${contactFrequency} dagen
-                    </span>
-                    
-                    ${hasPlannedInteraction ? `
-                    <div class="progress-container mt-2">
-                        <div class="timer-indicator">
-                            <span class="timer-text">
-                                <i class="bi bi-calendar-check"></i> Afspraak: ${formatDaysUntilLabel(daysUntilPlanned)}
-                            </span>
-                            <span class="timer-text">${Math.floor(plannedPercentage)}%</span>
-                        </div>
-                        ${(() => {
-                            const d = formatDate(nextPlannedInteraction.date);
-                            const t = formatTimeRange(nextPlannedInteraction.start_time, nextPlannedInteraction.end_time);
-                            return `<div class="text-muted small mt-1"><i class="bi bi-clock"></i> ${d}${t ? ' · ' + t : ''}</div>`;
-                        })()}
-                        <div class="progress">
-                            <div class="progress-bar bg-primary" 
-                                role="progressbar" 
-                                style="width: ${plannedPercentage}%" 
-                                aria-valuenow="${plannedPercentage}" 
-                                aria-valuemin="0" 
-                                aria-valuemax="100"></div>
-                        </div>
-                    </div>
-                    ` : `
-                    <div class="progress-container">
-                        <div class="timer-indicator">
-                            <span class="timer-text">Contact wenselijk in: ${calculateDaysRemaining(contact)} dagen</span>
-                            <span class="timer-text">${Math.floor(percentage)}%</span>
-                        </div>
-                        <div class="progress">
-                            <div class="progress-bar status-${contactStatus}" 
-                                role="progressbar" 
-                                style="width: ${percentage}%" 
-                                aria-valuenow="${percentage}" 
-                                aria-valuemin="0" 
-                                aria-valuemax="100"></div>
-                        </div>
-                    </div>
-                    `}
-                </div>
-                
-                <div class="card-actions mt-3">
-                    <button class="btn btn-success action-btn log-interaction-btn" data-id="${contact.id}">
-                        <i class="bi bi-plus-circle"></i> Vastleggen
-                    </button>
-                    <button class="btn btn-primary action-btn edit-btn" data-id="${contact.id}">
-                        <i class="bi bi-pencil"></i> Bewerken
-                    </button>
-                </div>
-            </div>
-            ${isContactDue(contact) ? '<div class="notification-dot"></div>' : ''}
-        </div>
-    `;
-    
-    col.innerHTML = cardHtml;
+function contactenRowRight(contact, today) {
+    const bucket = computeBucket(contact, today);
+    if (bucket === BUCKETS.NU_AFSPRAAK_MAKEN) {
+        return { text: formatUrgencyLabel(computeDagenTeLaat(contact, today)), cls: 'late' };
+    }
+    if (bucket === BUCKETS.BINNEN_TWEE_WEKEN) {
+        return { text: formatUrgencyLabel(computeDagenTeLaat(contact, today)), cls: 'soon' };
+    }
+    if (bucket === BUCKETS.AFSPRAAK_STAAT_AL) {
+        const next = getNextFuturePlannedInteraction(contact);
+        return { text: next ? formatPlannedDateShort(next.date) : 'gepland', cls: 'planned' };
+    }
+    if (bucket === BUCKETS.NOOIT_CONTACT) {
+        return { text: 'nog geen contact', cls: 'quiet' };
+    }
+    return { text: 'op schema', cls: 'quiet' };
+}
 
-    // Klik op de kaart = open details (tenzij je op een knop klikt)
-    col.querySelector('.contact-card').addEventListener('click', function(e) {
-        if (!e.target.closest('.action-btn')) {
-            showContactDetails(contact.id);
-        }
-    });
-
-    col.querySelector('.log-interaction-btn').addEventListener('click', function() {
-        showInteractionModal(contact.id);
-    });
-
-    col.querySelector('.edit-btn').addEventListener('click', function() {
-        editContact(contact.id);
-    });
-    
-    return col;
+function createContactCard(contact) {
+    const today = startOfDay(new Date());
+    const sub = contactenRowSubtext(contact);
+    const right = contactenRowRight(contact, today);
+    return renderGlistRow(contact, sub, right.text, right.cls);
 }
 
 /**
@@ -632,6 +518,522 @@ function isContactDue(contact) {
     return percentage >= 90;
 }
 
+// Pure logica (BUCKETS, computeBucket, formatters, avatar-helpers,
+// telefoon-normalize, etc.) staat in js/lib.js — die MOET voor app.js
+// in de HTML geladen worden. Hieronder alleen DOM-gebonden helpers.
+
+// --- Vandaag-scherm -----------------------------------------------------
+
+let attemptsData = [];
+
+function attemptsForContact(contactId) {
+    return attemptsData.filter(a => a.contact_id === contactId);
+}
+
+// Avatar-kleur uit categorie (heeft toegang nodig tot categoriesData
+// via getCategoryById, dus DOM-scope).
+function getContactAvatarColor(contact) {
+    if (!contact) return AVATAR_FALLBACK_COLOR;
+    const category = contact.categoryId ? getCategoryById(contact.categoryId) : null;
+    return category && category.color ? category.color : AVATAR_FALLBACK_COLOR;
+}
+
+// size: 'sm' (32px, list-rijen), 'md' (36px, Vandaag-kaart), 'lg' (48px, modal-header)
+function renderAvatarHtml(contact, size) {
+    const cls = size ? `avatar avatar-${size}` : 'avatar';
+    const color = getContactAvatarColor(contact);
+    const initials = getContactInitials(contact);
+    return `<div class="${cls}" style="background:${color}">${initials}</div>`;
+}
+
+function renderVandaag() {
+    const cardsContainer = document.getElementById('vandaag-cards');
+    const restnote = document.getElementById('vandaag-restnote');
+    const empty = document.getElementById('vandaag-empty');
+    const lead = document.getElementById('vandaag-lead');
+    const sub = document.getElementById('vandaag-sub');
+    if (!cardsContainer || !restnote || !empty || !lead || !sub) return;
+
+    const today = startOfDay(new Date());
+    const overdue = contactsData
+        .map(c => ({ c, dtl: computeDagenTeLaat(c, today) }))
+        .filter(x => computeBucket(x.c, today) === BUCKETS.NU_AFSPRAAK_MAKEN)
+        .sort((a, b) => b.dtl - a.dtl);
+
+    cardsContainer.innerHTML = '';
+
+    if (overdue.length === 0) {
+        lead.style.display = 'none';
+        sub.style.display = 'none';
+        restnote.style.display = 'none';
+        empty.style.display = 'block';
+        return;
+    }
+
+    lead.style.display = '';
+    sub.style.display = '';
+    empty.style.display = 'none';
+
+    const top = overdue.slice(0, 3);
+    const rest = overdue.length - top.length;
+
+    lead.textContent = 'Tijd voor een catch-up';
+
+    top.forEach(({ c, dtl }) => {
+        const attempt = getRecentAttempt(attemptsForContact(c.id));
+        cardsContainer.appendChild(renderVandaagCard(c, dtl, attempt, today));
+    });
+
+    if (rest > 0) {
+        restnote.textContent = rest === 1
+            ? 'Nog 1 contact staat te lang open.'
+            : `Nog ${rest} contacten staan te lang open.`;
+        restnote.style.display = '';
+    } else {
+        restnote.style.display = 'none';
+    }
+}
+
+function escapeHtml(s) {
+    return String(s == null ? '' : s).replace(/[&<>"']/g, m => ({
+        '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'
+    }[m]));
+}
+
+// Toont een inline melding wanneer een reach-knop niet kan worden gebruikt.
+// `field` is 'phone' of 'email'.
+function showMissingInfo(container, contact, field) {
+    if (!container) return;
+    const labelWord = field === 'phone' ? 'telefoonnummer' : 'e-mailadres';
+    container.innerHTML = `
+        <span>Geen ${labelWord} bekend voor ${escapeHtml(contact.name)}.</span>
+        <button type="button" class="missing-info-edit">Bewerken</button>
+    `;
+    container.style.display = '';
+    container.querySelector('.missing-info-edit').addEventListener('click', () => {
+        // Details-modal was mogelijk open — sluit hem eerst.
+        if (typeof detailsModal !== 'undefined' && detailsModal) {
+            detailsModal.hide();
+        }
+        setTimeout(() => editContact(contact.id), 200);
+    });
+}
+
+function renderVandaagCard(contact, dagenTeLaat, attempt, today) {
+    const wrapper = document.createElement('div');
+    wrapper.className = 'vandaag-card';
+    wrapper.dataset.contactId = contact.id;
+
+    const category = contact.categoryId ? getCategoryById(contact.categoryId) : null;
+    const categoryText = category ? category.name : '';
+    const lastDate = getLastPastInteractionDate(contact, today);
+    const lastDateText = lastDate
+        ? `${lastDate.getDate()} ${NL_MONTHS[lastDate.getMonth()]} ${lastDate.getFullYear()}`
+        : '';
+    const freq = contact.frequency || 30;
+
+    const metaParts = [];
+    if (categoryText) metaParts.push(categoryText);
+    if (lastDateText) metaParts.push(`laatste contact ${lastDateText}`);
+    metaParts.push(`elke ${freq} dagen`);
+
+    const phone = getContactPhone(contact);
+    const email = getContactEmail(contact);
+    const attemptLabel = formatAttemptLabel(attempt, new Date());
+
+    wrapper.innerHTML = `
+        <div class="v-head">
+            ${renderAvatarHtml(contact, 'md')}
+            <span class="v-name">${escapeHtml(contact.name)}</span>
+            <span class="v-flag">${escapeHtml(formatUrgencyLabel(dagenTeLaat))}</span>
+        </div>
+        <p class="v-meta">${escapeHtml(metaParts.join(' · '))}</p>
+        ${attemptLabel ? `<p class="v-attempt">${escapeHtml(attemptLabel)}</p>` : ''}
+        <div class="v-reach" role="group" aria-label="Bereik">
+            <button type="button" data-action="bellen" class="${phone ? '' : 'is-disabled'}">Bellen</button>
+            <button type="button" data-action="whatsapp" class="${phone ? '' : 'is-disabled'}">WhatsApp</button>
+            <button type="button" data-action="mail" class="${email ? '' : 'is-disabled'}">Mail</button>
+        </div>
+        <div class="missing-info" style="display: none;"></div>
+        <button type="button" class="v-primary" data-action="plan">Nu afspraak maken</button>
+    `;
+
+    const bellen = wrapper.querySelector('[data-action="bellen"]');
+    const wapp = wrapper.querySelector('[data-action="whatsapp"]');
+    const mail = wrapper.querySelector('[data-action="mail"]');
+    const plan = wrapper.querySelector('[data-action="plan"]');
+    const missingInfo = wrapper.querySelector('.missing-info');
+
+    bellen.addEventListener('click', () => {
+        if (phone) handleReach(contact, 'bellen');
+        else showMissingInfo(missingInfo, contact, 'phone');
+    });
+    wapp.addEventListener('click', () => {
+        if (phone) handleReach(contact, 'whatsapp');
+        else showMissingInfo(missingInfo, contact, 'phone');
+    });
+    mail.addEventListener('click', () => {
+        if (email) handleReach(contact, 'mail');
+        else showMissingInfo(missingInfo, contact, 'email');
+    });
+    plan.addEventListener('click', () => handlePlan(contact));
+
+    // Klik op naam of avatar (niet op knoppen) opent details
+    const head = wrapper.querySelector('.v-head');
+    head.style.cursor = 'pointer';
+    head.addEventListener('click', () => showContactDetails(contact.id));
+
+    return wrapper;
+}
+
+function handleReach(contact, kanaal) {
+    let url = null;
+    if (kanaal === 'bellen') {
+        const phone = getContactPhone(contact);
+        if (phone) url = `tel:${phone.replace(/\s+/g, '')}`;
+    } else if (kanaal === 'whatsapp') {
+        const wa = normalizePhoneForWa(getContactPhone(contact));
+        if (wa) url = `https://wa.me/${wa}`;
+    } else if (kanaal === 'mail') {
+        const email = getContactEmail(contact);
+        if (email) url = `mailto:${email}`;
+    }
+    if (!url) return;
+
+    if (kanaal === 'whatsapp') {
+        window.open(url, '_blank');
+    } else {
+        window.location.href = url;
+    }
+    logAttempt(contact.id, kanaal);
+}
+
+function handlePlan(contact) {
+    openNewInteraction(contact.id);
+}
+
+// Ingang voor "nieuwe afspraak". Checkt eerst of Google Calendar verbonden
+// is. Nooit-verbonden gebruikers zien geen prompt. Ooit-verbonden zonder
+// actieve token krijgen een keuze: opnieuw verbinden of doorgaan zonder
+// Calendar. Het openen van de interactie-modal gebeurt in beide gevallen.
+let pendingInteractionContactId = null;
+let calendarReconnectModal = null;
+
+function openNewInteraction(contactId) {
+    if (googleAccessToken) {
+        showInteractionModal(contactId);
+        return;
+    }
+    const everConnected = localStorage.getItem('google_calendar_ever_connected') === 'true';
+    if (!everConnected) {
+        showInteractionModal(contactId);
+        return;
+    }
+    if (typeof google === 'undefined' || !google.accounts) {
+        // GIS niet geladen — geen zin om te prompten, gewoon door.
+        showInteractionModal(contactId);
+        return;
+    }
+    // Toon de prompt en onthoud voor welk contact we straks openen
+    pendingInteractionContactId = contactId;
+    if (!calendarReconnectModal) {
+        const el = document.getElementById('calendar-reconnect-modal');
+        if (!el) { showInteractionModal(contactId); return; }
+        calendarReconnectModal = new bootstrap.Modal(el);
+    }
+    calendarReconnectModal.show();
+}
+
+function handleCalendarReconnectClick() {
+    const contactId = pendingInteractionContactId;
+    if (calendarReconnectModal) calendarReconnectModal.hide();
+    // Start OAuth-flow; open interactie-modal in beide takken zodra klaar
+    connectGoogleCalendar(
+        () => { if (contactId) showInteractionModal(contactId); },
+        () => { if (contactId) showInteractionModal(contactId); }
+    );
+    pendingInteractionContactId = null;
+}
+
+function handleCalendarSkipClick() {
+    const contactId = pendingInteractionContactId;
+    if (calendarReconnectModal) calendarReconnectModal.hide();
+    if (contactId) showInteractionModal(contactId);
+    pendingInteractionContactId = null;
+}
+
+function logAttempt(contactId, kanaal) {
+    const now = new Date();
+    const tempAttempt = {
+        id: 'local-' + generateUniqueId(),
+        user_id: currentUser ? currentUser.id : null,
+        contact_id: contactId,
+        kanaal,
+        created_at: now.toISOString()
+    };
+    attemptsData.push(tempAttempt);
+    renderVandaag();
+    renderOverzicht();
+
+    if (!isSupabaseConfigured() || !currentUser) return;
+
+    supabaseClient
+        .from('attempts')
+        .insert({ user_id: currentUser.id, contact_id: contactId, kanaal })
+        .select()
+        .single()
+        .then(({ data, error }) => {
+            if (error) {
+                console.warn('Kon poging niet wegschrijven:', error);
+                return;
+            }
+            const idx = attemptsData.findIndex(a => a.id === tempAttempt.id);
+            if (idx !== -1 && data) attemptsData[idx] = data;
+        });
+}
+
+async function loadAttemptsFromSupabase() {
+    if (!isSupabaseConfigured() || !currentUser) {
+        attemptsData = [];
+        return;
+    }
+    const cutoff = new Date(Date.now() - 14 * 24 * 60 * 60 * 1000).toISOString();
+    const { data, error } = await supabaseClient
+        .from('attempts')
+        .select('*')
+        .eq('user_id', currentUser.id)
+        .gte('created_at', cutoff);
+    if (error) {
+        console.warn('Kon attempts niet laden (tabel bestaat mogelijk nog niet):', error);
+        attemptsData = [];
+        return;
+    }
+    attemptsData = data || [];
+}
+
+function switchMainTab(view) {
+    const views = {
+        vandaag: { tab: 'tab-vandaag', view: 'vandaag-view' },
+        overzicht: { tab: 'tab-overzicht', view: 'overzicht-view' },
+        contacten: { tab: 'tab-contacten', view: 'contacten-view' }
+    };
+    if (!views[view]) return;
+    Object.entries(views).forEach(([key, ids]) => {
+        const tab = document.getElementById(ids.tab);
+        const el = document.getElementById(ids.view);
+        if (!tab || !el) return;
+        const active = key === view;
+        tab.classList.toggle('active', active);
+        el.style.display = active ? '' : 'none';
+    });
+}
+
+// --- Overzicht-scherm ----------------------------------------------------
+// BUCKET_COLORS, BUCKET_TITLES en formatPlannedDateShort staan in lib.js.
+
+function overzichtRowSubtext(contact, bucket, today) {
+    const category = contact.categoryId ? getCategoryById(contact.categoryId) : null;
+    const catText = category ? category.name : '';
+    if (bucket === BUCKETS.NU_AFSPRAAK_MAKEN) {
+        const days = daysSinceLastPastInteraction(contact, today);
+        const daysText = `${days} ${dagWoord(days)} geen contact`;
+        return catText ? `${catText} · ${daysText}` : daysText;
+    }
+    if (bucket === BUCKETS.BINNEN_TWEE_WEKEN) {
+        const freq = contact.frequency || 30;
+        return catText ? `${catText} · elke ${freq} dagen` : `elke ${freq} dagen`;
+    }
+    if (bucket === BUCKETS.AFSPRAAK_STAAT_AL) {
+        const freq = contact.frequency || 30;
+        const next = getNextFuturePlannedInteraction(contact);
+        const parts = [];
+        if (catText) parts.push(catText);
+        parts.push(`elke ${freq} dagen`);
+        if (next && next.title) parts.push(next.title);
+        else if (next && next.notes) parts.push(next.notes);
+        return parts.join(' · ');
+    }
+    if (bucket === BUCKETS.NOOIT_CONTACT) {
+        const freq = contact.frequency || 30;
+        return catText ? `${catText} · elke ${freq} dagen` : `elke ${freq} dagen`;
+    }
+    return catText;
+}
+
+function overzichtRowRightLabel(contact, bucket, today) {
+    if (bucket === BUCKETS.NU_AFSPRAAK_MAKEN || bucket === BUCKETS.BINNEN_TWEE_WEKEN) {
+        return { text: formatUrgencyLabel(computeDagenTeLaat(contact, today)) };
+    }
+    if (bucket === BUCKETS.AFSPRAAK_STAAT_AL) {
+        const next = getNextFuturePlannedInteraction(contact);
+        return { text: next ? formatPlannedDateShort(next.date) : '' };
+    }
+    if (bucket === BUCKETS.NOOIT_CONTACT) {
+        return { text: 'nog geen contact' };
+    }
+    return { text: '' };
+}
+
+function renderOverzicht() {
+    const container = document.getElementById('overzicht-sections');
+    const opSchemaCard = document.getElementById('overzicht-op-schema');
+    const opSchemaCount = document.getElementById('overzicht-op-schema-count');
+    const empty = document.getElementById('overzicht-empty');
+    if (!container || !opSchemaCard || !opSchemaCount || !empty) return;
+
+    container.innerHTML = '';
+
+    const today = startOfDay(new Date());
+    const byBucket = {
+        [BUCKETS.NU_AFSPRAAK_MAKEN]: [],
+        [BUCKETS.BINNEN_TWEE_WEKEN]: [],
+        [BUCKETS.AFSPRAAK_STAAT_AL]: [],
+        [BUCKETS.NOOIT_CONTACT]: [],
+        [BUCKETS.OP_SCHEMA]: []
+    };
+    contactsData.forEach(c => {
+        byBucket[computeBucket(c, today)].push(c);
+    });
+
+    byBucket[BUCKETS.NU_AFSPRAAK_MAKEN].sort((a, b) =>
+        computeDagenTeLaat(b, today) - computeDagenTeLaat(a, today));
+    byBucket[BUCKETS.BINNEN_TWEE_WEKEN].sort((a, b) =>
+        computeDagenTeLaat(a, today) - computeDagenTeLaat(b, today));
+    byBucket[BUCKETS.AFSPRAAK_STAAT_AL].sort((a, b) => {
+        const ap = getNextFuturePlannedInteraction(a);
+        const bp = getNextFuturePlannedInteraction(b);
+        if (!ap || !bp) return 0;
+        return parseLocalDate(ap.date) - parseLocalDate(bp.date);
+    });
+
+    const geprobeerd = [
+        ...byBucket[BUCKETS.NU_AFSPRAAK_MAKEN],
+        ...byBucket[BUCKETS.BINNEN_TWEE_WEKEN]
+    ]
+        .map(c => ({ c, attempt: getRecentAttempt(attemptsForContact(c.id)) }))
+        .filter(x => x.attempt !== null)
+        .sort((a, b) => new Date(b.attempt.created_at) - new Date(a.attempt.created_at));
+
+    const order = [
+        { key: BUCKETS.NU_AFSPRAAK_MAKEN, contacts: byBucket[BUCKETS.NU_AFSPRAAK_MAKEN] },
+        { key: BUCKETS.BINNEN_TWEE_WEKEN, contacts: byBucket[BUCKETS.BINNEN_TWEE_WEKEN] },
+        { key: BUCKETS.AFSPRAAK_STAAT_AL, contacts: byBucket[BUCKETS.AFSPRAAK_STAAT_AL] },
+        { key: 'geprobeerd', geprobeerd },
+        { key: BUCKETS.NOOIT_CONTACT, contacts: byBucket[BUCKETS.NOOIT_CONTACT] }
+    ];
+
+    const totalInVisible = order.reduce((n, s) => n + (s.geprobeerd ? s.geprobeerd.length : s.contacts.length), 0);
+    const totalOpSchema = byBucket[BUCKETS.OP_SCHEMA].length;
+
+    if (totalInVisible === 0 && totalOpSchema === 0) {
+        empty.style.display = 'block';
+        opSchemaCard.style.display = 'none';
+        return;
+    }
+    empty.style.display = 'none';
+
+    order.forEach(section => {
+        if (section.geprobeerd) {
+            if (section.geprobeerd.length === 0) return;
+            container.appendChild(renderOverzichtGeprobeerd(section.geprobeerd));
+        } else {
+            if (section.contacts.length === 0) return;
+            container.appendChild(renderOverzichtSection(section.key, section.contacts, today));
+        }
+    });
+
+    opSchemaCount.textContent = totalOpSchema;
+    opSchemaCard.style.display = totalOpSchema > 0 ? '' : 'none';
+}
+
+// rightLabelClass staat in lib.js.
+
+function renderGlistRow(contact, subtext, rightText, rightClass) {
+    const row = document.createElement('div');
+    row.className = 'glist-row';
+    row.dataset.contactId = contact.id;
+    row.setAttribute('role', 'button');
+    row.setAttribute('tabindex', '0');
+    row.innerHTML = `
+        ${renderAvatarHtml(contact, 'sm')}
+        <div class="who-block">
+            <div class="who">${escapeHtml(contact.name)}</div>
+            ${subtext ? `<div class="when">${escapeHtml(subtext)}</div>` : ''}
+        </div>
+        <div class="right ${rightClass}">${escapeHtml(rightText || '')}</div>
+    `;
+    row.addEventListener('click', () => showContactDetails(contact.id));
+    row.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter' || e.key === ' ') {
+            e.preventDefault();
+            showContactDetails(contact.id);
+        }
+    });
+    return row;
+}
+
+function renderOverzichtSection(bucketKey, contacts, today) {
+    const wrapper = document.createElement('div');
+    wrapper.className = 'mb-4 overzicht-section';
+    wrapper.dataset.bucket = bucketKey;
+
+    const header = document.createElement('div');
+    header.className = 'overzicht-ghead';
+    header.innerHTML = `
+        <span class="gdot" style="background:${BUCKET_COLORS[bucketKey]}"></span>
+        <span>${escapeHtml(BUCKET_TITLES[bucketKey])}</span>
+        <span class="gcount">${contacts.length}</span>
+    `;
+    wrapper.appendChild(header);
+
+    const list = document.createElement('div');
+    list.className = 'glist';
+    const rightClass = rightLabelClass(bucketKey);
+    contacts.forEach(c => {
+        const sub = overzichtRowSubtext(c, bucketKey, today);
+        const right = overzichtRowRightLabel(c, bucketKey, today);
+        list.appendChild(renderGlistRow(c, sub, right.text, rightClass));
+    });
+    wrapper.appendChild(list);
+    return wrapper;
+}
+
+function renderOverzichtGeprobeerd(items) {
+    const wrapper = document.createElement('div');
+    wrapper.className = 'mb-4 overzicht-section';
+    wrapper.dataset.bucket = 'geprobeerd';
+
+    const header = document.createElement('div');
+    header.className = 'overzicht-ghead';
+    header.innerHTML = `
+        <span class="gdot" style="background:${BUCKET_COLORS.geprobeerd}"></span>
+        <span>${escapeHtml(BUCKET_TITLES.geprobeerd)}</span>
+        <span class="gcount">${items.length}</span>
+    `;
+    wrapper.appendChild(header);
+
+    const list = document.createElement('div');
+    list.className = 'glist';
+    items.forEach(({ c, attempt }) => {
+        const label = formatAttemptLabel(attempt, new Date());
+        list.appendChild(renderGlistRow(c, label, 'opnieuw?', 'quiet'));
+    });
+    wrapper.appendChild(list);
+    return wrapper;
+}
+
+if (typeof window !== 'undefined') {
+    window.computeBucket = computeBucket;
+    window.computeDagenTeLaat = computeDagenTeLaat;
+    window.getRecentAttempt = getRecentAttempt;
+    window.formatUrgencyLabel = formatUrgencyLabel;
+    window.formatAttemptLabel = formatAttemptLabel;
+    window.renderVandaag = renderVandaag;
+    window.renderOverzicht = renderOverzicht;
+    window.switchMainTab = switchMainTab;
+    window.BUCKETS = BUCKETS;
+}
+
 /**
  * Get the next future planned interaction for a contact
  * @param {Object} contact - The contact data
@@ -639,22 +1041,22 @@ function isContactDue(contact) {
  */
 function getNextFuturePlannedInteraction(contact) {
     if (!contact.interactions) return null;
-    
+
     const today = new Date();
     today.setHours(0, 0, 0, 0);
-    
+
     const futurePlanned = contact.interactions.filter(i => {
         if (!i.planned) return false;
         const parts = i.date.split('-');
         const date = new Date(parts[0], parts[1] - 1, parts[2]);
         return date >= today;
     });
-    
+
     if (futurePlanned.length === 0) return null;
-    
+
     // Sort by date ascending
     futurePlanned.sort((a, b) => new Date(a.date) - new Date(b.date));
-    
+
     return futurePlanned[0];
 }
 
@@ -787,6 +1189,8 @@ async function saveContact() {
     const birthday = document.getElementById('contact-birthday').value;
     const frequency = parseInt(document.getElementById('contact-frequency').value);
     const notes = document.getElementById('contact-notes').value;
+    const phone = (document.getElementById('contact-phone').value || '').trim();
+    const email = (document.getElementById('contact-email').value || '').trim();
     
     // Get custom fields
     const customFields = [];
@@ -809,6 +1213,8 @@ async function saveContact() {
                 birthday: birthday || null,
                 frequency,
                 notes: notes || null,
+                phone: phone || null,
+                email: email || null,
                 custom_fields: customFields,
                 user_id: currentUser.id
             };
@@ -833,6 +1239,8 @@ async function saveContact() {
                         birthday,
                         frequency,
                         notes,
+                        phone,
+                        email,
                         customFields
                     };
                 }
@@ -856,6 +1264,8 @@ async function saveContact() {
                     birthday,
                     frequency,
                     notes,
+                    phone,
+                    email,
                     customFields,
                     interactions: []
                 };
@@ -874,8 +1284,10 @@ async function saveContact() {
                     existingContact.birthday = birthday;
                     existingContact.frequency = frequency;
                     existingContact.notes = notes;
+                    existingContact.phone = phone;
+                    existingContact.email = email;
                     existingContact.customFields = customFields;
-                    
+
                     contactsData[index] = existingContact;
                 }
             } else {
@@ -887,10 +1299,12 @@ async function saveContact() {
                     birthday,
                     frequency,
                     notes,
+                    phone,
+                    email,
                     customFields,
                     interactions: []
                 };
-                
+
                 contactsData.push(newContact);
             }
             
@@ -1006,13 +1420,8 @@ async function saveInteraction() {
     const type = document.getElementById('interaction-type').value;
     const notes = document.getElementById('interaction-notes').value;
 
-    // Determine if planned based on date (Future = Planned, Today/Past = History)
-    const dateParts = date.split('-');
-    const selectedDate = new Date(dateParts[0], dateParts[1] - 1, dateParts[2]);
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
-
-    const isPlanned = selectedDate > today;
+    // Afspraak vandaag of later = gepland. Zie isPlannedForDate in lib.js.
+    const isPlanned = isPlannedForDate(date);
 
     // Find contact
     const contactIndex = contactsData.findIndex(c => c.id === contactId);
@@ -1160,6 +1569,89 @@ async function saveInteraction() {
     }
 }
 
+// State voor pagineerbare historie in de details-modal.
+let detailsHistoryLimit = 5;
+const HISTORY_PAGE_SIZE = 5;
+
+const INTERACTION_ICONS = {
+    'in-person': '👤',
+    'video':     '🎥',
+    'phone':     '📞',
+    'message':   '💬',
+    'email':     '📧',
+    'other':     '✨'
+};
+
+function interactionIcon(interaction) {
+    if (interaction.planned) return '📅';
+    return INTERACTION_ICONS[interaction.type] || '·';
+}
+
+function renderDetailsHistory(contact, container) {
+    const today = startOfDay(new Date());
+    const interactions = (contact.interactions || []).slice();
+
+    // Toekomstige geplande eerst (asc), daarna alle andere (desc op datum)
+    const future = interactions
+        .filter(i => i.planned && parseLocalDate(i.date) >= today)
+        .sort((a, b) => parseLocalDate(a.date) - parseLocalDate(b.date));
+    const rest = interactions
+        .filter(i => !(i.planned && parseLocalDate(i.date) >= today))
+        .sort((a, b) => parseLocalDate(b.date) - parseLocalDate(a.date));
+    const ordered = future.concat(rest);
+    const total = ordered.length;
+
+    container.innerHTML = '';
+
+    if (total === 0) {
+        const empty = document.createElement('p');
+        empty.className = 'small text-muted mb-0';
+        empty.textContent = 'Nog geen contactmomenten.';
+        container.appendChild(empty);
+        return;
+    }
+
+    const limit = Math.min(detailsHistoryLimit, total);
+    for (let idx = 0; idx < limit; idx++) {
+        const interaction = ordered[idx];
+        const isFuture = interaction.planned && parseLocalDate(interaction.date) >= today;
+        const btn = document.createElement('button');
+        btn.type = 'button';
+        btn.className = 'history-item';
+        const typeLabel = typeof getInteractionTypeLabel === 'function'
+            ? getInteractionTypeLabel(interaction.type)
+            : interaction.type;
+        const notes = interaction.notes ? ` · ${interaction.notes}` : '';
+        btn.innerHTML = `
+            <span class="history-icon ${isFuture ? 'upcoming' : ''}">${interactionIcon(interaction)}</span>
+            <span class="history-body">
+                <span class="history-date">${escapeHtml(formatDate(interaction.date))}${isFuture ? '<span class="history-badge-upcoming">gepland</span>' : ''}</span>
+                <span class="history-detail">${escapeHtml(typeLabel + notes)}</span>
+            </span>
+            <span class="history-chevron">›</span>
+        `;
+        btn.addEventListener('click', () => {
+            detailsModal.hide();
+            setTimeout(() => showInteractionModal(contact.id, interaction.id), 300);
+        });
+        container.appendChild(btn);
+    }
+
+    const remaining = total - limit;
+    if (remaining > 0) {
+        const loadMore = document.createElement('button');
+        loadMore.type = 'button';
+        loadMore.className = 'history-load-more';
+        const step = Math.min(HISTORY_PAGE_SIZE, remaining);
+        loadMore.textContent = `Toon ${step} eerdere momenten (${remaining} meer)`;
+        loadMore.addEventListener('click', () => {
+            detailsHistoryLimit += HISTORY_PAGE_SIZE;
+            renderDetailsHistory(contact, container);
+        });
+        container.appendChild(loadMore);
+    }
+}
+
 /**
  * Show contact details in modal
  * @param {string} contactId - The contact ID
@@ -1167,242 +1659,132 @@ async function saveInteraction() {
 function showContactDetails(contactId) {
     const contact = contactsData.find(c => c.id === contactId);
     if (!contact) return;
-    
-    // Update modal title
-    document.getElementById('details-name').textContent = contact.name;
-    
-    // Set button attributes
-    document.getElementById('delete-contact-btn').setAttribute('data-id', contact.id);
-    document.getElementById('edit-contact-btn').setAttribute('data-id', contact.id);
-    
-    // Setup add interaction button
-    const addInteractionBtn = document.getElementById('add-interaction-btn');
-    // Clone to remove old event listeners
-    const newAddBtn = addInteractionBtn.cloneNode(true);
-    addInteractionBtn.parentNode.replaceChild(newAddBtn, addInteractionBtn);
-    
-    newAddBtn.addEventListener('click', function() {
+
+    const today = startOfDay(new Date());
+    const dtl = computeDagenTeLaat(contact, today);
+    const bucket = computeBucket(contact, today);
+    const flagCls = rightLabelClass(bucket);
+    let flagText;
+    if (bucket === BUCKETS.AFSPRAAK_STAAT_AL) {
+        const next = getNextFuturePlannedInteraction(contact);
+        flagText = next ? `Afspraak ${formatPlannedDateShort(next.date)}` : 'Afspraak gepland';
+    } else if (bucket === BUCKETS.NOOIT_CONTACT) {
+        flagText = 'Nog geen contact';
+    } else if (bucket === BUCKETS.OP_SCHEMA) {
+        flagText = 'Op schema';
+    } else {
+        flagText = formatUrgencyLabel(dtl);
+    }
+
+    const category = contact.categoryId ? getCategoryById(contact.categoryId) : null;
+    const categoryText = category ? category.name : '';
+    const freq = contact.frequency || 30;
+    const catLine = categoryText ? `${categoryText} · elke ${freq} dagen` : `Elke ${freq} dagen`;
+
+    const phone = getContactPhone(contact);
+    const email = getContactEmail(contact);
+    const attempt = getRecentAttempt(attemptsForContact(contact.id));
+    const attemptLabel = formatAttemptLabel(attempt, new Date());
+
+    const extraFields = (contact.customFields || []).filter(field => {
+        if (!field || !field.key) return false;
+        if (PHONE_KEY_PATTERNS.some(p => p.test(field.key))) return false;
+        if (EMAIL_KEY_PATTERNS.some(p => p.test(field.key))) return false;
+        return true;
+    });
+
+    const body = document.getElementById('details-modal-body');
+    body.innerHTML = `
+        <div class="details-top">
+            ${renderAvatarHtml(contact, 'lg')}
+            <div>
+                <div class="modal-name">${escapeHtml(contact.name)}</div>
+                <div class="modal-cat">${escapeHtml(catLine)}</div>
+            </div>
+        </div>
+
+        <span class="details-flag ${flagCls}">${escapeHtml(flagText)}</span>
+
+        <div>
+            ${phone ? `<div class="details-info-row"><span class="info-label">Telefoon</span><span class="info-value"><a href="tel:${escapeHtml(phone.replace(/\s+/g, ''))}">${escapeHtml(phone)}</a></span></div>` : ''}
+            ${email ? `<div class="details-info-row"><span class="info-label">E-mail</span><span class="info-value"><a href="mailto:${escapeHtml(email)}">${escapeHtml(email)}</a></span></div>` : ''}
+            ${contact.birthday ? `<div class="details-info-row"><span class="info-label">Geboortedatum</span><span class="info-value">${escapeHtml(formatDate(contact.birthday))}</span></div>` : ''}
+            ${contact.notes ? `<div class="details-info-row"><span class="info-label">Notities</span><span class="info-value">${escapeHtml(contact.notes)}</span></div>` : ''}
+            ${extraFields.map(f => `<div class="details-info-row"><span class="info-label">${escapeHtml(f.key)}</span><span class="info-value">${escapeHtml(f.value || '')}</span></div>`).join('')}
+        </div>
+
+        ${attemptLabel ? `<div class="details-attempt-line">${escapeHtml(attemptLabel)}</div>` : ''}
+
+        <div class="details-action-block">
+            <div class="details-action-label">Contact opnemen</div>
+            <div class="details-reach-row">
+                <button type="button" data-action="bellen" class="${phone ? '' : 'is-disabled'}">Bellen</button>
+                <button type="button" data-action="whatsapp" class="${phone ? '' : 'is-disabled'}">WhatsApp</button>
+                <button type="button" data-action="mail" class="${email ? '' : 'is-disabled'}">Mail</button>
+            </div>
+            <div class="missing-info" style="display: none;"></div>
+            <button type="button" class="details-primary-btn" data-action="plan">Nu afspraak maken</button>
+        </div>
+
+        <div class="history-section">
+            <div class="history-header">
+                <span class="history-title">Contactgeschiedenis</span>
+                <span class="history-count" id="details-history-count"></span>
+            </div>
+            <div id="details-history-list"></div>
+        </div>
+
+        <div class="details-footer-row">
+            <button type="button" data-action="edit">Bewerken</button>
+            <button type="button" data-action="log">Vastleggen</button>
+        </div>
+    `;
+
+    // Reset paginering + render historie
+    detailsHistoryLimit = HISTORY_PAGE_SIZE;
+    const totalHistoryCount = (contact.interactions || []).length;
+    const historyCountEl = body.querySelector('#details-history-count');
+    if (historyCountEl) {
+        historyCountEl.textContent = totalHistoryCount === 1
+            ? '1 moment'
+            : `${totalHistoryCount} momenten`;
+    }
+    renderDetailsHistory(contact, body.querySelector('#details-history-list'));
+
+    // Handlers
+    const bellenBtn = body.querySelector('[data-action="bellen"]');
+    const wappBtn = body.querySelector('[data-action="whatsapp"]');
+    const mailBtn = body.querySelector('[data-action="mail"]');
+    const planBtn = body.querySelector('[data-action="plan"]');
+    const editBtn = body.querySelector('[data-action="edit"]');
+    const logBtn = body.querySelector('[data-action="log"]');
+
+    const missingInfoDetails = body.querySelector('.missing-info');
+    bellenBtn.addEventListener('click', () => {
+        if (phone) handleReach(contact, 'bellen');
+        else showMissingInfo(missingInfoDetails, contact, 'phone');
+    });
+    wappBtn.addEventListener('click', () => {
+        if (phone) handleReach(contact, 'whatsapp');
+        else showMissingInfo(missingInfoDetails, contact, 'phone');
+    });
+    mailBtn.addEventListener('click', () => {
+        if (email) handleReach(contact, 'mail');
+        else showMissingInfo(missingInfoDetails, contact, 'email');
+    });
+    planBtn.addEventListener('click', () => {
         detailsModal.hide();
-        setTimeout(() => {
-            showInteractionModal(contactId);
-        }, 500);
+        setTimeout(() => openNewInteraction(contact.id), 300);
     });
-    
-    const infoContainer = document.getElementById('details-info');
-    let infoHtml = '';
-    
-    if (contact.birthday) {
-        infoHtml += `<p><strong>Geboortedatum:</strong> ${formatDate(contact.birthday)}</p>`;
-    }
-    
-    infoHtml += `<p><strong>Contact frequentie:</strong> Elke ${contact.frequency || 30} dagen</p>`;
-    
-    if (contact.notes) {
-        infoHtml += `<p><strong>Notities:</strong> ${contact.notes}</p>`;
-    }
-    
-    // Add custom fields
-    if (contact.customFields && contact.customFields.length > 0) {
-        infoHtml += '<div class="mt-3 mb-3"><strong>Extra informatie:</strong>';
-        infoHtml += '<ul class="list-group">';
-        
-        contact.customFields.forEach(field => {
-            infoHtml += `<li class="list-group-item d-flex justify-content-between align-items-center">
-                <span>${field.key}</span>
-                <span class="text-secondary">${field.value}</span>
-            </li>`;
-        });
-        
-        infoHtml += '</ul></div>';
-    }
-    
-    // Find upcoming planned interactions
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
-    
-    const plannedInteractions = contact.interactions ? contact.interactions.filter(i => {
-        if (!i.planned) return false;
-        const date = new Date(i.date);
-        return date >= today;
-    }) : [];
-    
-    if (plannedInteractions.length > 0) {
-        // Sort by date (earliest first)
-        plannedInteractions.sort((a, b) => new Date(a.date) - new Date(b.date));
-        
-        // Get next planned interaction
-        const nextPlannedInteraction = plannedInteractions[0];
-        const daysUntilPlanned = calculateDaysUntilDate(nextPlannedInteraction.date);
-        
-        // Calculate percentage for progress bar (closer to date = higher percentage)
-        const plannedDate = new Date(nextPlannedInteraction.date);
-        const originalDateSet = new Date(plannedDate);
-        originalDateSet.setDate(originalDateSet.getDate() - 30); // Assume planned 30 days in advance
-        
-        const totalDays = (plannedDate - originalDateSet) / (1000 * 60 * 60 * 24);
-        const daysElapsed = (today - originalDateSet) / (1000 * 60 * 60 * 24);
-        const plannedPercentage = Math.min(100, Math.max(0, (daysElapsed / totalDays) * 100));
-        
-        infoHtml += '<div class="alert alert-primary mt-3">';
-        infoHtml += `<p><strong>Geplande afspraak:</strong> ${formatDate(nextPlannedInteraction.date)} (${formatDaysUntilLabel(daysUntilPlanned)})</p>`;
-        infoHtml += `<p><strong>Type:</strong> ${getInteractionTypeLabel(nextPlannedInteraction.type)}</p>`;
-        
-        infoHtml += `<div class="progress mt-2">
-            <div class="progress-bar bg-primary" 
-                role="progressbar" 
-                style="width: ${plannedPercentage}%" 
-                aria-valuenow="${plannedPercentage}" 
-                aria-valuemin="0" 
-                aria-valuemax="100"></div>
-        </div>`;
-        
-        infoHtml += '</div>';
-    }
-    
-    // Add contact stats for past interactions
-    const daysSinceLastContact = calculateDaysSinceLastContact(contact);
-    const daysRemaining = calculateDaysRemaining(contact);
-    const percentage = calculateTimePercentage(contact);
-    
-    infoHtml += '<div class="alert alert-info mt-3">';
-    
-    if (daysSinceLastContact === Infinity) {
-        infoHtml += '<p><strong>Status:</strong> Nog geen contact gehad</p>';
-    } else {
-        infoHtml += `<p><strong>Laatste contact:</strong> ${formatLastContactDate(contact)}</p>`;
-        infoHtml += `<p><strong>Volgend contact:</strong> ${daysRemaining === 0 ? 'Nu' : `Over ${daysRemaining} dagen`}</p>`;
-    }
-    
-    infoHtml += `<div class="progress mt-2">
-        <div class="progress-bar status-${getContactStatus(percentage)}" 
-            role="progressbar" 
-            style="width: ${percentage}%" 
-            aria-valuenow="${percentage}" 
-            aria-valuemin="0" 
-            aria-valuemax="100"></div>
-    </div>`;
-    
-    infoHtml += '</div>';
-    
-    infoContainer.innerHTML = infoHtml;
-    
-    // Build interaction history
-    const historyContainer = document.getElementById('interaction-history');
-    let historyHtml = '';
-    
-    if (!contact.interactions || contact.interactions.length === 0) {
-        historyHtml = '<p class="text-center text-muted">Geen interacties gevonden</p>';
-    } else {
-        // Create separate sections for planned and past interactions
-        // Note: 'today' and 'plannedInteractions' are already defined in the outer scope
-        
-        // Past interactions: planned=false OR (planned=true AND date < today)
-        const pastInteractions = contact.interactions.filter(i => {
-            if (!i.planned) return true;
-            const parts = i.date.split('-');
-            const date = new Date(parts[0], parts[1] - 1, parts[2]);
-            return date < today;
-        });
-        
-        // Add planned interactions section if any exist
-        if (plannedInteractions.length > 0) {
-            historyHtml += '<h5 class="mt-3 mb-3">Geplande afspraken</h5>';
-            
-            // Sort by date (earliest first)
-            plannedInteractions.sort((a, b) => new Date(a.date) - new Date(b.date));
-            
-            plannedInteractions.forEach(interaction => {
-                const daysUntil = calculateDaysUntilDate(interaction.date);
-                
-                historyHtml += `<div class="interaction-item" data-id="${interaction.id}">
-                    <div class="interaction-header d-flex justify-content-between">
-                        <span class="interaction-date">
-                            ${formatDate(interaction.date)}
-                            ${formatTimeRange(interaction.start_time, interaction.end_time)
-                                ? `<span class="text-muted ms-1">· ${formatTimeRange(interaction.start_time, interaction.end_time)}</span>`
-                                : ''}
-                            <span class="badge bg-primary ms-2">${formatDaysUntilLabel(daysUntil)}</span>
-                        </span>
-                        <div>
-                            <span class="interaction-type">
-                                ${getInteractionTypeLabel(interaction.type)}
-                                <span class="interaction-type-pill">${interaction.type}</span>
-                            </span>
-                            <div class="btn-group btn-group-sm ms-2">
-                                <button type="button" class="btn btn-outline-primary edit-interaction-btn" data-id="${interaction.id}">
-                                    <i class="bi bi-pencil"></i>
-                                </button>
-                                <button type="button" class="btn btn-outline-danger delete-interaction-btn" data-id="${interaction.id}">
-                                    <i class="bi bi-trash"></i>
-                                </button>
-                            </div>
-                        </div>
-                    </div>
-                    ${interaction.notes ? `<div class="interaction-notes mt-2">${interaction.notes}</div>` : ''}
-                </div>`;
-            });
-        }
-        
-        // Add past interactions section if any exist
-        if (pastInteractions.length > 0) {
-            historyHtml += '<h5 class="mt-4 mb-3">Vorige contactmomenten</h5>';
-            
-            // Sort by date (newest first)
-            pastInteractions.sort((a, b) => new Date(b.date) - new Date(a.date));
-            
-            pastInteractions.forEach(interaction => {
-                historyHtml += `<div class="interaction-item" data-id="${interaction.id}">
-                    <div class="interaction-header d-flex justify-content-between">
-                        <span class="interaction-date">${formatDate(interaction.date)}</span>
-                        <div>
-                            <span class="interaction-type">
-                                ${getInteractionTypeLabel(interaction.type)}
-                                <span class="interaction-type-pill">${interaction.type}</span>
-                            </span>
-                            <div class="btn-group btn-group-sm ms-2">
-                                <button type="button" class="btn btn-outline-primary edit-interaction-btn" data-id="${interaction.id}">
-                                    <i class="bi bi-pencil"></i>
-                                </button>
-                                <button type="button" class="btn btn-outline-danger delete-interaction-btn" data-id="${interaction.id}">
-                                    <i class="bi bi-trash"></i>
-                                </button>
-                            </div>
-                        </div>
-                    </div>
-                    ${interaction.notes ? `<div class="interaction-notes mt-2">${interaction.notes}</div>` : ''}
-                </div>`;
-            });
-        }
-    }
-    
-    historyContainer.innerHTML = historyHtml;
-    
-    // Add event listeners for interaction edit and delete buttons
-    const editButtons = historyContainer.querySelectorAll('.edit-interaction-btn');
-    const deleteButtons = historyContainer.querySelectorAll('.delete-interaction-btn');
-    
-    editButtons.forEach(button => {
-        button.addEventListener('click', function() {
-            const interactionId = this.getAttribute('data-id');
-            
-            // Close details modal first to prevent z-index issues
-            detailsModal.hide();
-            
-            // Wait for modal to close, then open interaction modal
-            setTimeout(function() {
-                showInteractionModal(contactId, interactionId);
-            }, 300); // Bootstrap modal transition time
-        });
+    editBtn.addEventListener('click', () => {
+        detailsModal.hide();
+        setTimeout(() => editContact(contact.id), 300);
     });
-    
-    deleteButtons.forEach(button => {
-        button.addEventListener('click', function() {
-            const interactionId = this.getAttribute('data-id');
-            deleteInteraction(contactId, interactionId);
-        });
+    logBtn.addEventListener('click', () => {
+        detailsModal.hide();
+        setTimeout(() => openNewInteraction(contact.id), 300);
     });
-    
-    // Show modal
+
     detailsModal.show();
 }
 
@@ -1446,9 +1828,10 @@ function setGoogleCalendarUI(connected) {
  * Start Google OAuth flow (expliciete klik van gebruiker)
  * Toestemming wordt 60 dagen opgeslagen; daarna stille hernieuwing zonder popup.
  */
-function connectGoogleCalendar() {
+function connectGoogleCalendar(onSuccess, onFailure) {
     if (typeof google === 'undefined' || !google.accounts) {
         alert('Google Identity Services zijn nog niet geladen. Probeer het opnieuw.');
+        if (typeof onFailure === 'function') onFailure();
         return;
     }
     googleTokenClient = google.accounts.oauth2.initTokenClient({
@@ -1457,11 +1840,17 @@ function connectGoogleCalendar() {
         callback: (response) => {
             if (response.error) {
                 console.error('Google OAuth fout:', response.error);
+                if (typeof onFailure === 'function') onFailure();
                 return;
             }
             googleAccessToken = response.access_token;
             // Sla toestemming op voor 60 dagen
             localStorage.setItem('google_consent_granted', String(Date.now() + GOOGLE_CONSENT_EXPIRY_MS));
+            // Markeer dat deze browser ooit verbonden is geweest — daarna
+            // vraagt de app bij nieuwe afspraken om opnieuw te verbinden
+            // als de token weg is. Gebruikers die dit nooit klikken worden
+            // ook nooit geprompt.
+            localStorage.setItem('google_calendar_ever_connected', 'true');
             setGoogleCalendarUI(true);
             // Sla gekozen account op als login_hint voor stille verlenging
             fetch('https://www.googleapis.com/oauth2/v3/userinfo', {
@@ -1470,6 +1859,7 @@ function connectGoogleCalendar() {
             .then(r => r.json())
             .then(info => { if (info.email) localStorage.setItem('google_login_hint', info.email); })
             .catch(() => {});
+            if (typeof onSuccess === 'function') onSuccess();
         }
     });
     // Bij expliciete klik altijd account-selectie tonen
@@ -1503,6 +1893,7 @@ function initGoogleCalendarSilently() {
         callback: (response) => {
             if (!response.error) {
                 googleAccessToken = response.access_token;
+                localStorage.setItem('google_calendar_ever_connected', 'true');
                 setGoogleCalendarUI(true);
             }
             // Stille mislukking: geen melding, knop blijft op "Google Calendar"
@@ -1748,17 +2139,39 @@ function editContact(contactId) {
     document.getElementById('contact-birthday').value = contact.birthday || '';
     document.getElementById('contact-frequency').value = contact.frequency || 30;
     document.getElementById('contact-notes').value = contact.notes || '';
-    
-    // Clear custom fields
-    customFieldsContainer.innerHTML = '';
-    
-    // Add custom fields if any
-    if (contact.customFields && contact.customFields.length > 0) {
-        contact.customFields.forEach(field => {
-            addCustomField(field);
-        });
+
+    // Vaste telefoon/email velden. Auto-migreer bij bewerken: als het
+    // vaste veld leeg is en een custom field matcht op de sleutel,
+    // hijs de waarde naar het vaste veld en verwijder die custom field
+    // uit de invoer — bij opslaan is de migratie definitief.
+    const remainingCustom = (contact.customFields || []).slice();
+
+    let phoneValue = contact.phone && contact.phone.trim() ? contact.phone.trim() : '';
+    if (!phoneValue) {
+        const idx = remainingCustom.findIndex(f =>
+            f && f.key && f.value && PHONE_KEY_PATTERNS.some(p => p.test(f.key)));
+        if (idx !== -1) {
+            phoneValue = remainingCustom[idx].value.trim();
+            remainingCustom.splice(idx, 1);
+        }
     }
-    
+    document.getElementById('contact-phone').value = phoneValue;
+
+    let emailValue = contact.email && contact.email.trim() ? contact.email.trim() : '';
+    if (!emailValue) {
+        const idx = remainingCustom.findIndex(f =>
+            f && f.key && f.value && EMAIL_KEY_PATTERNS.some(p => p.test(f.key)));
+        if (idx !== -1) {
+            emailValue = remainingCustom[idx].value.trim();
+            remainingCustom.splice(idx, 1);
+        }
+    }
+    document.getElementById('contact-email').value = emailValue;
+
+    // Clear custom fields en toon alleen wat niet gemigreerd is
+    customFieldsContainer.innerHTML = '';
+    remainingCustom.forEach(field => addCustomField(field));
+
     // Show modal
     contactModal.show();
 }
@@ -1969,9 +2382,11 @@ async function handleImportFile(event) {
                                     birthday: contact.birthday || null,
                                     frequency: contact.frequency || 30,
                                     notes: contact.notes || null,
+                                    phone: contact.phone || null,
+                                    email: contact.email || null,
                                     custom_fields: contact.customFields || []
                                 });
-                            
+
                             if (contactError) throw contactError;
                             
                             // Save interactions if any
@@ -2188,6 +2603,7 @@ async function handleLogout() {
 
         // Clear local data
         contactsData = [];
+        attemptsData = [];
         renderContacts();
 
         // Google Calendar ontkoppelen
@@ -2343,6 +2759,8 @@ async function migrateLocalStorageToSupabase(contacts) {
                         birthday: contact.birthday || null,
                         frequency: contact.frequency || 30,
                         notes: contact.notes || null,
+                        phone: contact.phone || null,
+                        email: contact.email || null,
                         custom_fields: contact.customFields || []
                     });
                 
@@ -2426,9 +2844,12 @@ async function loadDataFromSupabase() {
             .from('interactions')
             .select('*')
             .eq('user_id', currentUser.id);
-        
+
         if (interactionsError) throw interactionsError;
-        
+
+        // Load recente pogingen (stap 4: Vandaag-scherm)
+        await loadAttemptsFromSupabase();
+
         // Combine contacts with their interactions
         contactsData = contacts.map(contact => ({
             id: contact.id,
@@ -2437,6 +2858,8 @@ async function loadDataFromSupabase() {
             birthday: contact.birthday,
             frequency: contact.frequency,
             notes: contact.notes,
+            phone: contact.phone || '',
+            email: contact.email || '',
             customFields: contact.custom_fields || [],
             interactions: interactions.filter(i => i.contact_id === contact.id)
         }));

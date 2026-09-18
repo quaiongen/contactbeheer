@@ -1,89 +1,115 @@
 <!DOCTYPE html>
 <html lang="nl">
 <head>
-    <!-- redeploy -->
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Contactbeheer</title>
+    <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><rect width='100' height='100' rx='20' fill='%232563eb'/><circle cx='50' cy='38' r='16' fill='white'/><path d='M20 88a30 30 0 0 1 60 0z' fill='white'/></svg>">
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.10.0/font/bootstrap-icons.css">
-    <link rel="stylesheet" href="css/styles.css">
-    <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><rect width='100' height='100' rx='20' fill='%232563eb'/><circle cx='50' cy='38' r='16' fill='white'/><path d='M20 88a30 30 0 0 1 60 0z' fill='white'/></svg>">
+    <link rel="stylesheet" href="css/styles.css?v=20260916e">
 </head>
 <body>
-    <div class="container-fluid">
-        <header class="bg-primary text-white p-3 mb-4">
-            <div class="row align-items-center">
-                <div class="col-md-8">
-                    <h1>Contactbeheer</h1>
-                </div>
-                <div class="col-md-4 text-md-end">
-                    <div class="d-inline-block me-2">
-                        <select class="form-select form-select-sm" id="sort-contacts">
-                            <option value="urgency">Sorteren: Urgentie</option>
-                            <option value="planned">Sorteren: Eerstvolgende afspraak</option>
-                        </select>
-                    </div>
-                    <div id="user-info" class="d-inline-block me-2" style="display: none !important;">
-                        <small class="text-white me-2">
-                            <i class="bi bi-person-circle"></i>
-                            <span id="user-email"></span>
-                        </small>
-                        <button class="btn btn-sm btn-outline-light" id="logout-btn">
-                            <i class="bi bi-box-arrow-right"></i> Uitloggen
-                        </button>
-                    </div>
-                    <div class="d-inline-block me-2">
-                        <button class="btn btn-outline-light" id="google-calendar-btn" title="Google Calendar koppelen">
-                            <i class="bi bi-calendar-check"></i> <span id="google-calendar-status">Google Calendar</span>
-                        </button>
-                    </div>
-                    <div class="btn-group" role="group">
-                        <button class="btn btn-outline-light" id="export-data-btn" title="Data exporteren">
-                            <i class="bi bi-download"></i>
-                        </button>
-                        <button class="btn btn-outline-light" id="import-data-btn" title="Data importeren">
-                            <i class="bi bi-upload"></i>
-                        </button>
-                        <button class="btn btn-outline-light" id="manage-categories-btn" title="Categorieën beheren">
-                            <i class="bi bi-tags-fill"></i>
-                        </button>
-                        <button class="btn btn-light" id="add-contact-btn">
-                            <i class="bi bi-person-plus-fill"></i> Nieuw Contact
-                        </button>
-                    </div>
-                    <input type="file" id="import-file-input" accept=".json" style="display: none;">
-                </div>
+    <div class="container-fluid px-2 px-sm-3">
+        <header class="bg-primary text-white px-3 py-2 mb-3 d-flex align-items-center justify-content-between rounded-bottom">
+            <h1 class="h5 m-0">Contactbeheer</h1>
+            <div class="dropdown">
+                <button class="btn btn-outline-light border-0" id="app-menu-btn" type="button" data-bs-toggle="dropdown" aria-expanded="false" aria-label="Menu">
+                    <i class="bi bi-list" style="font-size: 1.4rem;"></i>
+                </button>
+                <ul class="dropdown-menu dropdown-menu-end shadow" aria-labelledby="app-menu-btn">
+                    <li><button class="dropdown-item" id="add-contact-btn" type="button"><i class="bi bi-person-plus me-2"></i>Nieuw contact</button></li>
+                    <li><hr class="dropdown-divider"></li>
+                    <li><button class="dropdown-item" id="google-calendar-btn" type="button" title="Google Calendar koppelen"><i class="bi bi-calendar-check me-2"></i><span id="google-calendar-status">Google Calendar</span></button></li>
+                    <li><button class="dropdown-item" id="manage-categories-btn" type="button"><i class="bi bi-tags me-2"></i>Categorieën</button></li>
+                    <li><button class="dropdown-item" id="import-data-btn" type="button"><i class="bi bi-upload me-2"></i>Importeren</button></li>
+                    <li><button class="dropdown-item" id="export-data-btn" type="button"><i class="bi bi-download me-2"></i>Exporteren</button></li>
+                    <li><hr class="dropdown-divider"></li>
+                    <li id="user-info" style="display: none;">
+                        <span class="dropdown-item-text small text-muted"><i class="bi bi-person-circle me-1"></i><span id="user-email"></span></span>
+                    </li>
+                    <li><button class="dropdown-item" id="logout-btn" type="button"><i class="bi bi-box-arrow-right me-2"></i>Uitloggen</button></li>
+                </ul>
             </div>
+            <input type="file" id="import-file-input" accept=".json" style="display: none;">
         </header>
 
-        <!-- Search & Filter Bar -->
-        <div class="bg-light border-bottom p-3 mb-4">
-            <div class="container-fluid">
-                <div class="row align-items-center gap-3">
-                    <div class="col-12 col-md-6">
-                        <div class="input-group input-group-sm">
-                            <span class="input-group-text bg-white border-end-0" style="border-color: #dee2e6;">
-                                <i class="bi bi-search"></i>
-                            </span>
-                            <input type="text" class="form-control border-start-0" id="search-contacts" placeholder="Zoek contact...">
-                        </div>
+        <main class="container-fluid">
+            <!-- Hoofdtabs: Vandaag | Overzicht | Contacten -->
+            <ul class="nav nav-tabs mb-3" id="main-tabs" role="tablist">
+                <li class="nav-item" role="presentation">
+                    <button class="nav-link active" id="tab-vandaag" data-view="vandaag" type="button">Vandaag</button>
+                </li>
+                <li class="nav-item" role="presentation">
+                    <button class="nav-link" id="tab-overzicht" data-view="overzicht" type="button">Overzicht</button>
+                </li>
+                <li class="nav-item" role="presentation">
+                    <button class="nav-link" id="tab-contacten" data-view="contacten" type="button">Contacten</button>
+                </li>
+            </ul>
+
+            <!-- Vandaag-view -->
+            <div id="vandaag-view">
+                <div class="mb-3">
+                    <h5 class="mb-1" id="vandaag-lead">Tijd voor een catch-up</h5>
+                    <p class="text-muted small mb-0" id="vandaag-sub">Langst geleden geen contact mee gehad bovenaan</p>
+                </div>
+                <div id="vandaag-cards"></div>
+                <p class="text-muted small mt-3 mb-0" id="vandaag-restnote" style="display: none;"></p>
+                <div id="vandaag-empty" class="text-center py-5 text-muted" style="display: none;">
+                    <div class="mb-1"><strong class="text-body">Klaar voor vandaag</strong></div>
+                    <div class="small">Geen contacten meer die te lang openstaan.</div>
+                </div>
+            </div>
+
+            <!-- Overzicht-view: alle buckets onder elkaar -->
+            <div id="overzicht-view" style="display: none;">
+                <div id="overzicht-sections"></div>
+                <div id="overzicht-op-schema" class="card mt-2" style="cursor: pointer;">
+                    <div class="card-body py-2 d-flex justify-content-between align-items-center">
+                        <span class="text-muted">Op schema</span>
+                        <span class="text-muted small"><span id="overzicht-op-schema-count">0</span> →</span>
                     </div>
-                    <div class="col-12 col-md-6">
-                        <div id="category-filters" class="d-flex gap-2 flex-wrap">
-                            <button class="btn btn-sm btn-outline-primary active" data-category="all">Alles</button>
-                            <!-- Categories will be added here -->
+                </div>
+                <div id="overzicht-empty" class="text-center py-5 text-muted" style="display: none;">
+                    Nog geen contacten om te bucketen.
+                </div>
+            </div>
+
+            <!-- Contacten-view: zoek + filters + bestaande lijst -->
+            <div id="contacten-view" style="display: none;">
+                <div class="mb-3">
+                    <select class="form-select form-select-sm w-auto" id="sort-contacts">
+                        <option value="urgency">Sorteren: Urgentie</option>
+                        <option value="name">Sorteren: Naam A-Z</option>
+                    </select>
+                </div>
+
+                <!-- Search & Filter Bar -->
+                <div class="bg-light border rounded p-3 mb-3">
+                    <div class="row align-items-center gap-3">
+                        <div class="col-12 col-md-6">
+                            <div class="input-group input-group-sm">
+                                <span class="input-group-text bg-white border-end-0" style="border-color: #dee2e6;">
+                                    <i class="bi bi-search"></i>
+                                </span>
+                                <input type="text" class="form-control border-start-0" id="search-contacts" placeholder="Zoek contact...">
+                            </div>
+                        </div>
+                        <div class="col-12 col-md-6">
+                            <div id="category-filters" class="d-flex gap-2 flex-nowrap overflow-auto pb-1" style="scrollbar-width: thin;">
+                                <button class="btn btn-sm btn-outline-primary active flex-shrink-0" data-category="all">Alles</button>
+                                <!-- Categories will be added here -->
+                            </div>
                         </div>
                     </div>
                 </div>
-            </div>
-        </div>
 
-        <main>
-            <!-- Contact Dashboard -->
-            <div class="row" id="contacts-container">
-                <!-- Contacts will be inserted here by JavaScript -->
-                <div class="col-12 text-center py-5" id="no-contacts-message">
+                <!-- Contact Dashboard -->
+                <div class="glist" id="contacts-container">
+                    <!-- Contacts will be inserted here by JavaScript -->
+                </div>
+                <div class="text-center py-5" id="no-contacts-message" style="display: none;">
                     <h3>Geen contacten gevonden</h3>
                     <p>Klik op "Nieuw Contact" om te beginnen.</p>
                 </div>
@@ -119,6 +145,14 @@
                             <div class="mb-3">
                                 <label for="contact-frequency" class="form-label">Gewenste contactfrequentie (dagen)</label>
                                 <input type="number" class="form-control" id="contact-frequency" min="1" value="30" required>
+                            </div>
+                            <div class="mb-3">
+                                <label for="contact-phone" class="form-label">Telefoonnummer</label>
+                                <input type="tel" class="form-control" id="contact-phone" placeholder="Bijv. 0612345678">
+                            </div>
+                            <div class="mb-3">
+                                <label for="contact-email" class="form-label">E-mailadres</label>
+                                <input type="email" class="form-control" id="contact-email" placeholder="Bijv. naam@voorbeeld.nl">
                             </div>
                             <div class="mb-3">
                                 <label for="contact-notes" class="form-label">Notities</label>
@@ -251,6 +285,28 @@
             </div>
         </div>
 
+        <!-- Google Calendar reconnect-prompt (alleen getoond bij nieuwe afspraak
+             als de gebruiker ooit verbonden is geweest maar nu niet is) -->
+        <div class="modal fade" id="calendar-reconnect-modal" tabindex="-1" aria-hidden="true">
+            <div class="modal-dialog modal-dialog-centered modal-sm">
+                <div class="modal-content">
+                    <div class="modal-header">
+                        <h5 class="modal-title">Google Calendar niet verbonden</h5>
+                        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                    </div>
+                    <div class="modal-body">
+                        <p class="mb-0 small">Je bent op dit moment niet verbonden met Google Calendar. Wil je opnieuw verbinden zodat deze afspraak in je agenda komt? Zonder verbinding wordt de afspraak alleen in Contactbeheer opgeslagen.</p>
+                    </div>
+                    <div class="modal-footer">
+                        <button type="button" class="btn btn-outline-secondary btn-sm" id="calendar-skip-btn">Zonder Calendar</button>
+                        <button type="button" class="btn btn-primary btn-sm" id="calendar-reconnect-btn">
+                            <i class="bi bi-calendar-check me-1"></i> Verbinden
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+
         <!-- Log Interaction Modal -->
         <div class="modal fade" id="interaction-modal" tabindex="-1" aria-hidden="true">
             <div class="modal-dialog">
@@ -300,7 +356,7 @@
                             </div>
                             <div class="mb-3">
                                 <label for="interaction-notes" class="form-label">Notities / Beschrijving</label>
-                                <textarea class="form-control" id="interaction-notes" rows="3" placeholder="Wordt ook als beschrijving in Google Calendar geplaatst"></textarea>
+                                <textarea class="form-control" id="interaction-notes" rows="3"></textarea>
                             </div>
                         </form>
                     </div>
@@ -382,40 +438,13 @@
 
         <!-- Contact Details Modal -->
         <div class="modal fade" id="details-modal" tabindex="-1" aria-hidden="true">
-            <div class="modal-dialog modal-lg">
+            <div class="modal-dialog modal-dialog-centered">
                 <div class="modal-content">
-                    <div class="modal-header">
-                        <h5 class="modal-title" id="details-name">Contact Details</h5>
-                        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                    <div class="modal-header border-0 pb-0">
+                        <button type="button" class="btn-close ms-auto" data-bs-dismiss="modal" aria-label="Sluiten"></button>
                     </div>
-                    <div class="modal-body">
-                        <div class="card mb-3">
-                            <div class="card-header">Contactgegevens</div>
-                            <div class="card-body" id="details-info">
-                                <!-- Contact details will be inserted here -->
-                            </div>
-                        </div>
-                        
-                        <div class="card mb-3">
-                            <div class="card-header d-flex justify-content-between align-items-center">
-                                <span>Interactie Geschiedenis</span>
-                                <button class="btn btn-sm btn-primary" id="add-interaction-btn">
-                                    <i class="bi bi-plus-circle"></i> Nieuw contact vastleggen
-                                </button>
-                            </div>
-                            <div class="card-body">
-                                <div id="interaction-history">
-                                    <!-- Interaction history will be inserted here -->
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-                    <div class="modal-footer">
-                        <button type="button" class="btn btn-outline-danger me-auto" id="delete-contact-btn">
-                            <i class="bi bi-trash"></i> Verwijderen
-                        </button>
-                        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Sluiten</button>
-                        <button type="button" class="btn btn-primary" id="edit-contact-btn">Bewerken</button>
+                    <div class="modal-body pt-0" id="details-modal-body">
+                        <!-- Filled by showContactDetails() -->
                     </div>
                 </div>
             </div>
@@ -426,6 +455,7 @@
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.49.4"></script>
     <script src="https://accounts.google.com/gsi/client" async defer></script>
     <script src="js/supabase-config.js"></script>
+    <script src="js/lib.js?v=20260916f"></script>
     <script src="js/app.js"></script>
 </body>
 </html>

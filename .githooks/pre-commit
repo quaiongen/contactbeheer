@@ -1,0 +1,13 @@
+#!/bin/sh
+# Contactbeheer pre-commit hook.
+# Draait de pure-logica testset. Blokkeer commit als iets rood staat.
+# Activeren: `git config core.hooksPath .githooks`
+
+set -e
+
+# Syntax-check first — snel, geeft duidelijkere fout dan runtime.
+node --check js/lib.js
+node --check js/app.js
+
+# Testset draaien.
+npm test --silent
