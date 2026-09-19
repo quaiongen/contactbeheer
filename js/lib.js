@@ -245,6 +245,26 @@
         return null;
     }
 
+    // Combineer bestaande events met het voorstel-slot en sorteer op
+    // start-tijd. Events krijgen isProposal=false, het voorstel true.
+    // Nodig voor de agenda-mini-view in Stap 4 van de slot-zoeker.
+    function bouwAgendaItems(events, slot, proposalTitle) {
+        const items = (events || []).map(e => ({
+            start: e.start,
+            end: e.end,
+            title: e.title,
+            isProposal: false
+        }));
+        items.push({
+            start: slot.startTime,
+            end: slot.endTime,
+            title: proposalTitle,
+            isProposal: true
+        });
+        items.sort((a, b) => parseTimeString(a.start) - parseTimeString(b.start));
+        return items;
+    }
+
     // --- Contact info helpers ------------------------------------------
 
     function findCustomFieldValue(contact, patterns) {
@@ -330,6 +350,7 @@
         urgencyRank,
         // slot-zoeker
         presetSpec,
-        vindVrijeSlot
+        vindVrijeSlot,
+        bouwAgendaItems
     };
 }));

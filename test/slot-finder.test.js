@@ -1,6 +1,6 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
-const { presetSpec, parseTimeString, formatTimeString, addMinutes, vindVrijeSlot } = require('../js/lib.js');
+const { presetSpec, parseTimeString, formatTimeString, addMinutes, vindVrijeSlot, bouwAgendaItems } = require('../js/lib.js');
 
 test('parseTimeString: HH:MM → minutes-sinds-middernacht', () => {
     assert.equal(parseTimeString('00:00'), 0);
@@ -99,4 +99,30 @@ test('vindVrijeSlot: kandidaten stepping van 15 min, eerste passende wint', () =
 
 test('vindVrijeSlot: duur langer dan tot 23:59 → null (voorbij einde dag)', () => {
     assert.equal(vindVrijeSlot([], '22:00', '22:00', 180), null);
+});
+
+test('bouwAgendaItems: leeg + voorstel → 1 item (voorstel)', () => {
+    const items = bouwAgendaItems([], { startTime: '12:00', endTime: '13:30' }, 'Lunch met Jamiroquai');
+    assert.deepEqual(items, [
+        { start: '12:00', end: '13:30', title: 'Lunch met Jamiroquai', isProposal: true }
+    ]);
+});
+
+test('bouwAgendaItems: gesorteerd op start-tijd', () => {
+    const events = [
+        { start: '14:00', end: '15:00', title: 'Klantcall' },
+        { start: '09:00', end: '10:00', title: 'Standup' }
+    ];
+    const items = bouwAgendaItems(events, { startTime: '12:00', endTime: '13:30' }, 'Lunch');
+    assert.equal(items.length, 3);
+    assert.equal(items[0].title, 'Standup');
+    assert.equal(items[1].title, 'Lunch');
+    assert.equal(items[1].isProposal, true);
+    assert.equal(items[2].title, 'Klantcall');
+});
+
+test('bouwAgendaItems: events krijgen isProposal=false', () => {
+    const events = [{ start: '09:00', end: '10:00', title: 'X' }];
+    const items = bouwAgendaItems(events, { startTime: '11:00', endTime: '12:00' }, 'Y');
+    assert.equal(items[0].isProposal, false);
 });
