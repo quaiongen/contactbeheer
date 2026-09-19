@@ -186,6 +186,23 @@
         return `${d.getDate()} ${NL_MONTHS[d.getMonth()]}`;
     }
 
+    // --- Slot-zoeker ---------------------------------------------------
+
+    function presetSpec(preset, andersInput) {
+        if (preset === 'lunch') {
+            return { startVensterVan: '11:30', startVensterTot: '12:00', duur: 90, titelTemplate: 'Lunch met {naam}' };
+        }
+        if (preset === 'diner') {
+            return { startVensterVan: '18:00', startVensterTot: '19:30', duur: 180, titelTemplate: 'Diner met {naam}' };
+        }
+        if (preset === 'anders') {
+            const t = (andersInput && andersInput.starttijd) || '14:00';
+            const d = (andersInput && andersInput.duur) || 60;
+            return { startVensterVan: t, startVensterTot: t, duur: d, titelTemplate: null };
+        }
+        return null;
+    }
+
     // --- Contact info helpers ------------------------------------------
 
     function findCustomFieldValue(contact, patterns) {
@@ -267,6 +284,8 @@
         // avatar
         getContactInitials,
         // sort
-        urgencyRank
+        urgencyRank,
+        // slot-zoeker
+        presetSpec
     };
 }));
