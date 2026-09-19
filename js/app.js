@@ -937,8 +937,27 @@ function renderWizardResults(body) {
 }
 
 function chooseSlot(idx) {
-    // Stub — invulling in Task 12.
-    console.log('chooseSlot', idx, slotWizardState.proposals[idx]);
+    const proposal = slotWizardState.proposals[idx];
+    if (!proposal) return;
+
+    const spec = presetSpec(slotWizardState.preset, slotWizardState.andersInput);
+    const contact = contactsData.find(c => c.id === slotWizardState.contactId);
+    const contactName = contact ? contact.name : '';
+    const title = spec && spec.titelTemplate
+        ? spec.titelTemplate.replace('{naam}', contactName)
+        : null;
+
+    const prefill = {
+        date: proposal.dateStr,
+        start_time: proposal.slot.startTime,
+        end_time: proposal.slot.endTime,
+        title
+    };
+
+    if (slotWizardModal) slotWizardModal.hide();
+    setTimeout(() => {
+        showInteractionModal(slotWizardState.contactId, null, prefill);
+    }, 300);
 }
 
 function renderWizardLoading(body) {
@@ -1624,7 +1643,7 @@ function generateUniqueId() {
  * @param {string} contactId - The contact ID
  * @param {string} [interactionId] - Optional interaction ID for editing
  */
-function showInteractionModal(contactId, interactionId = null) {
+function showInteractionModal(contactId, interactionId = null, prefill = null) {
     // Reset form
     document.getElementById('interaction-form').reset();
 
@@ -1645,6 +1664,18 @@ function showInteractionModal(contactId, interactionId = null) {
     const availEl = document.getElementById('google-availability');
     availEl.style.display = 'none';
     availEl.textContent = '';
+
+    // Slot-zoeker prefill (Task 12 van de slot-zoeker plan).
+    // Alleen bij NIEUWE afspraken (interactionId is null).
+    if (!interactionId && prefill) {
+        if (prefill.date) document.getElementById('interaction-date').value = prefill.date;
+        if (prefill.start_time) document.getElementById('interaction-start-time').value = prefill.start_time;
+        if (prefill.end_time) document.getElementById('interaction-end-time').value = prefill.end_time;
+        if (prefill.title) {
+            const titleEl = document.getElementById('interaction-title');
+            if (!titleEl.value) titleEl.value = prefill.title;
+        }
+    }
 
     if (interactionId) {
         // ── Bewerkmodus ──────────────────────────────────────────
