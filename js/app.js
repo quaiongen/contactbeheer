@@ -16,6 +16,7 @@ const contactForm = document.getElementById('contact-form');
 const customFieldsContainer = document.getElementById('custom-fields-container');
 const addFieldBtn = document.getElementById('add-field-btn');
 const saveInteractionBtn = document.getElementById('save-interaction-btn');
+const deleteInteractionBtn = document.getElementById('delete-interaction-btn');
 // details-modal delete/edit-knoppen zitten nu inline in de dynamisch
 // opgebouwde details-body; geen top-level refs meer nodig.
 const exportDataBtn = document.getElementById('export-data-btn');
@@ -260,6 +261,16 @@ function setupEventListeners() {
     
     // Save interaction button
     saveInteractionBtn.addEventListener('click', saveInteraction);
+
+    // Delete interaction button (alleen zichtbaar in bewerkmodus)
+    deleteInteractionBtn.addEventListener('click', () => {
+        const contactId = deleteInteractionBtn.dataset.contactId;
+        const interactionId = deleteInteractionBtn.dataset.interactionId;
+        if (!contactId || !interactionId) return;
+        if (!confirm('Weet je zeker dat je deze interactie wilt verwijderen? Dit verwijdert ook de Google Calendar-afspraak.')) return;
+        interactionModal.hide();
+        setTimeout(() => deleteInteraction(contactId, interactionId), 300);
+    });
     
     // Current date for interaction modal
     // Bij openen van een nieuwe (lege) afspraak defaulten we op vandaag.
@@ -1692,6 +1703,9 @@ function showInteractionModal(contactId, interactionId = null, prefill = null) {
         const interactionDate = rawDate.substring(0, 10);
 
         document.getElementById('interaction-modal-title').textContent = 'Contact Bewerken';
+        deleteInteractionBtn.dataset.contactId = contactId;
+        deleteInteractionBtn.dataset.interactionId = interaction.id;
+        deleteInteractionBtn.classList.remove('d-none');
         document.getElementById('interaction-id').value = interaction.id;
         document.getElementById('interaction-calendar-event-id').value = interaction.google_calendar_event_id || '';
         document.getElementById('interaction-title').value = interaction.title || '';
@@ -1711,6 +1725,9 @@ function showInteractionModal(contactId, interactionId = null, prefill = null) {
     } else {
         // ── Nieuw contactmoment ───────────────────────────────────
         document.getElementById('interaction-modal-title').textContent = 'Contact Vastleggen';
+        deleteInteractionBtn.classList.add('d-none');
+        delete deleteInteractionBtn.dataset.contactId;
+        delete deleteInteractionBtn.dataset.interactionId;
     }
 
     interactionModal.show();
@@ -2430,10 +2447,6 @@ async function deleteCalendarEvent(eventId) {
  * @param {string} interactionId - The interaction ID
  */
 async function deleteInteraction(contactId, interactionId) {
-    if (!confirm('Weet je zeker dat je deze interactie wilt verwijderen?')) {
-        return;
-    }
-
     const contactIndex = contactsData.findIndex(c => c.id === contactId);
     if (contactIndex === -1) return;
 
