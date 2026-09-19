@@ -76,6 +76,21 @@
         return n === 1 ? 'dag' : 'dagen';
     }
 
+    function parseTimeString(hhmm) {
+        const [h, m] = String(hhmm).split(':').map(Number);
+        return h * 60 + m;
+    }
+
+    function formatTimeString(minutes) {
+        const h = Math.floor(minutes / 60);
+        const m = minutes % 60;
+        return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`;
+    }
+
+    function addMinutes(hhmm, minutes) {
+        return formatTimeString(parseTimeString(hhmm) + minutes);
+    }
+
     // --- Interaction helpers -------------------------------------------
 
     function getPastInteractions(contact, today) {
@@ -268,6 +283,7 @@
         AVATAR_FALLBACK_COLOR,
         // date helpers
         parseLocalDate, startOfDay, daysBetween, dagWoord,
+        parseTimeString, formatTimeString, addMinutes,
         // interaction helpers
         getPastInteractions, hasFuturePlannedInteraction,
         daysSinceLastPastInteraction, getLastPastInteractionDate,
