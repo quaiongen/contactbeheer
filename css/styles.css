@@ -1065,6 +1065,11 @@ header h1.h5 {
 @keyframes slot-spin { to { transform: rotate(360deg); } }
 
 .wizard-slot {
+    display: block;
+    width: 100%;
+    text-align: left;
+    font: inherit;
+    color: inherit;
     border: 1px solid #E1E5EA;
     border-radius: 10px;
     padding: 12px 14px;

@@ -890,7 +890,7 @@ function renderWizardResults(body) {
     const labelParts = [];
     if (slotWizardState.preset === 'lunch') labelParts.push('🍽 Lunch · 90 min');
     else if (slotWizardState.preset === 'diner') labelParts.push('🍷 Diner · 3 uur');
-    else labelParts.push(`⚙️ Eigen · ${slotWizardState.andersInput.duur} min`);
+    else labelParts.push(`⚙️ Eigen · ${slotWizardState.andersInput?.duur ?? '?'} min`);
     labelParts.push(`komende ${slotWizardState.horizon} dagen`);
 
     body.innerHTML = `
@@ -904,9 +904,9 @@ function renderWizardResults(body) {
             </div>
         ` : proposals.map((p, i) => {
             const items = bouwAgendaItems(p.events, p.slot, proposalTitle);
-            const dayLabel = `${['zo','ma','di','wo','do','vr','za'][p.date.getDay()]} ${p.date.getDate()} ${['jan','feb','mrt','apr','mei','jun','jul','aug','sep','okt','nov','dec'][p.date.getMonth()]}`;
+            const dayLabel = `${NL_WEEKDAYS_SHORT[p.date.getDay()]} ${p.date.getDate()} ${NL_MONTHS[p.date.getMonth()]}`;
             return `
-                <div class="wizard-slot" data-proposal-index="${i}">
+                <button type="button" class="wizard-slot" data-proposal-index="${i}">
                     <div class="day-header">${escapeHtml(dayLabel)}</div>
                     ${items.length === 1 ? '<div class="wizard-agenda-row empty"><span class="time">Verder niks</span></div>' : ''}
                     ${items.map(it => `
@@ -915,7 +915,7 @@ function renderWizardResults(body) {
                             <span class="title">${escapeHtml(it.title)}${it.isProposal ? ' ← voorstel' : ''}</span>
                         </div>
                     `).join('')}
-                </div>
+                </button>
             `;
         }).join('')}
 
