@@ -103,6 +103,15 @@ Overal in de app wordt hetzelfde detailscherm getoond:
 - Koppeling blijft ~60 dagen actief via stille token-vernieuwing.
 - Als je op enig moment ontkoppeld raakt, verschijnt bij een nieuwe afspraak een keuze-prompt: **Verbinden** of **Zonder Calendar**. Gebruikers die de koppeling nooit hebben aangezet zien deze prompt niet.
 
+### 🔍 Slot-zoeker (wizard bij nieuwe afspraak)
+- Bij het aanmaken van een nieuwe afspraak opent eerst een wizard i.p.v. het lege formulier.
+- Kies **Lunch** (11:30–12:00 · 90 min), **Diner** (18:00–19:30 · 3 uur) of **Anders** (eigen tijd + duur).
+- Instelbaar hoeveel dagen vooruit gezocht wordt (default 30).
+- App zoekt via Google Calendar naar de eerste 5 dagen waarin je gekozen venster + duur past.
+- Elk voorstel wordt getoond als mini-dag-agenda: bestaande afspraken die dag + het voorstel-slot, chronologisch, voorstel gemarkeerd in rood.
+- Klik op een voorstel → het formulier opent met datum, tijd én titel ("Lunch met {naam}" of "Diner met {naam}") ingevuld.
+- Zonder Google Calendar-verbinding: wizard werkt beperkt (geen agenda-check) met een uitleg en optie om alsnog te verbinden.
+
 ### 🔍 Zoeken & filteren
 - Zoek contacten op naam via de zoekbalk (Contacten-tab).
 - Filter op categorie via horizontaal scrollende chips.
@@ -210,7 +219,8 @@ visuele contacten/
 │   ├── formatters.test.js        # Urgentie- en attempt-labels, planned-date, dagWoord
 │   ├── avatar.test.js            # Initialen
 │   ├── phone.test.js             # normalizePhoneForWa + getContactPhone/Email
-│   └── sort.test.js              # urgencyRank op de Contacten-tab
+│   ├── sort.test.js              # urgencyRank op de Contacten-tab
+│   └── slot-finder.test.js       # presetSpec, vindVrijeSlot, bouwAgendaItems
 ├── .github/workflows/tests.yml   # CI: draait node --test bij elke push/PR
 ├── .githooks/pre-commit          # Lokale pre-commit test-run
 ├── docs/
@@ -219,7 +229,8 @@ visuele contacten/
 │   ├── mockup-v2.html            # Visuele mockup
 │   ├── backlog.md                # Openstaande wensen
 │   ├── runbook-productie.md      # Stap-voor-stap uitrol van dev naar prod
-│   └── superpowers/specs/        # Ontwerp-documenten
+│   ├── superpowers/specs/        # Ontwerp-documenten
+│   └── superpowers/plans/        # Implementatie-plannen bij specs
 ├── package.json                  # `npm test`
 ├── supabase/functions/weekly-digest/
 │   ├── 01_view.sql               # View weekly_digest_v (bucket-logica in SQL)

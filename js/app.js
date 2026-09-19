@@ -16,6 +16,7 @@ const contactForm = document.getElementById('contact-form');
 const customFieldsContainer = document.getElementById('custom-fields-container');
 const addFieldBtn = document.getElementById('add-field-btn');
 const saveInteractionBtn = document.getElementById('save-interaction-btn');
+const deleteInteractionBtn = document.getElementById('delete-interaction-btn');
 // details-modal delete/edit-knoppen zitten nu inline in de dynamisch
 // opgebouwde details-body; geen top-level refs meer nodig.
 const exportDataBtn = document.getElementById('export-data-btn');
@@ -260,6 +261,28 @@ function setupEventListeners() {
     
     // Save interaction button
     saveInteractionBtn.addEventListener('click', saveInteraction);
+
+    // Delete interaction button (alleen zichtbaar in bewerkmodus)
+    deleteInteractionBtn.addEventListener('click', () => {
+        const contactId = deleteInteractionBtn.dataset.contactId;
+        const interactionId = deleteInteractionBtn.dataset.interactionId;
+        if (!contactId || !interactionId) return;
+
+        // Calendar-waarschuwing alleen tonen als user verbonden is EN
+        // deze interactie een gekoppeld Calendar-event heeft.
+        const contact = contactsData.find(c => c.id === contactId);
+        const interaction = contact && contact.interactions
+            ? contact.interactions.find(i => i.id === interactionId)
+            : null;
+        const raaktCalendar = !!googleAccessToken && !!(interaction && interaction.google_calendar_event_id);
+        const bericht = raaktCalendar
+            ? 'Weet je zeker dat je deze interactie wilt verwijderen? Dit verwijdert ook de Google Calendar-afspraak.'
+            : 'Weet je zeker dat je deze interactie wilt verwijderen?';
+
+        if (!confirm(bericht)) return;
+        interactionModal.hide();
+        setTimeout(() => deleteInteraction(contactId, interactionId), 300);
+    });
     
     // Current date for interaction modal
     // Bij openen van een nieuwe (lege) afspraak defaulten we op vandaag.
@@ -712,6 +735,340 @@ function handlePlan(contact) {
     openNewInteraction(contact.id);
 }
 
+// --- Slot-zoeker wizard ---------------------------------------------------
+
+let slotWizardModal = null;
+// Monotonic token dat incrementeert bij elke nieuwe wizard-open of preset-pick.
+// searchSlots capturet de waarde bij start en dropt zijn resultaat als de user
+// tussentijds de wizard sloot of opnieuw opende.
+let slotWizardSearchId = 0;
+let slotWizardState = {
+    contactId: null,
+    step: 'preset',       // 'preset' | 'anders' | 'loading' | 'results'
+    preset: null,         // 'lunch' | 'diner' | 'anders'
+    andersInput: { starttijd: '14:00', duur: 60 },
+    horizon: 30,
+    proposals: [],        // gevuld in results-stap
+    searchStartOffset: 0, // dagOffset waar volgende zoek-actie start (paginatie)
+    heeftMeer: false      // true als "Volgende 5" nog resultaten kan opleveren
+};
+
+function openSlotWizard(contactId) {
+    slotWizardSearchId++;   // invalidate lopende searchSlots-aanroepen
+    slotWizardState = {
+        contactId,
+        step: 'preset',
+        preset: null,
+        andersInput: { starttijd: '14:00', duur: 60 },
+        horizon: 30,
+        proposals: [],
+        searchStartOffset: 0,
+        heeftMeer: false
+    };
+    const el = document.getElementById('slot-wizard-modal');
+    if (!el) {
+        // Fallback: als de modal-HTML ontbreekt, gewoon direct interaction openen.
+        showInteractionModal(contactId);
+        return;
+    }
+    if (!slotWizardModal) {
+        slotWizardModal = new bootstrap.Modal(el);
+        // Bij sluiten via X/Esc/backdrop: invalidate lopende searchSlots.
+        el.addEventListener('hidden.bs.modal', () => { slotWizardSearchId++; });
+    }
+    renderWizard();
+    slotWizardModal.show();
+}
+
+function renderWizard() {
+    const body = document.getElementById('slot-wizard-body');
+    if (!body) return;
+    if (slotWizardState.step === 'preset') return renderWizardPreset(body);
+    if (slotWizardState.step === 'anders') return renderWizardAnders(body);
+    if (slotWizardState.step === 'loading') return renderWizardLoading(body);
+    if (slotWizardState.step === 'results') return renderWizardResults(body);
+}
+
+function renderWizardPreset(body) {
+    const contact = contactsData.find(c => c.id === slotWizardState.contactId);
+    const contactName = contact ? contact.name : '';
+    const fallback = !googleAccessToken;
+
+    body.innerHTML = `
+        <h2 class="wizard-step-title">Zoek een vrij moment</h2>
+        <p class="wizard-step-sub">${escapeHtml('Voor afspraak met ' + contactName)}</p>
+
+        ${fallback ? `
+            <div class="fallback-warn">
+                <b>Google Calendar niet verbonden.</b> De zoeker toont slots zonder agenda-check. Elke dag in de horizon krijgt één voorstel.
+                <br><button type="button" data-action="connect">Nu verbinden</button>
+            </div>
+        ` : ''}
+
+        <button class="preset-btn" type="button" data-preset="lunch">
+            <span class="preset-icon">🍽</span><span class="preset-title">Lunch</span>
+            <div class="preset-meta">Start tussen 11:30–12:00 · 90 min</div>
+        </button>
+        <button class="preset-btn" type="button" data-preset="diner">
+            <span class="preset-icon">🍷</span><span class="preset-title">Diner</span>
+            <div class="preset-meta">Start tussen 18:00–19:30 · 3 uur</div>
+        </button>
+        <button class="preset-btn" type="button" data-preset="anders">
+            <span class="preset-icon">⚙️</span><span class="preset-title">Anders</span>
+            <div class="preset-meta">Eigen tijd + duur</div>
+        </button>
+
+        <div class="horizon-box">
+            <label>Aantal dagen vooruit</label>
+            <input type="number" min="1" max="365" value="${slotWizardState.horizon}" id="wizard-horizon-input">
+        </div>
+    `;
+
+    body.querySelectorAll('.preset-btn').forEach(btn => {
+        btn.addEventListener('click', () => handlePresetPick(btn.dataset.preset));
+    });
+    const horizonInput = body.querySelector('#wizard-horizon-input');
+    horizonInput.addEventListener('change', () => {
+        const v = parseInt(horizonInput.value, 10);
+        if (v > 0 && v <= 365) slotWizardState.horizon = v;
+    });
+    const connectBtn = body.querySelector('[data-action="connect"]');
+    if (connectBtn) {
+        connectBtn.addEventListener('click', () => {
+            connectGoogleCalendar(
+                () => renderWizard(),  // success: rerender zonder fallback-warn
+                () => {}                // failure: blijf in fallback
+            );
+        });
+    }
+}
+
+function handlePresetPick(preset) {
+    slotWizardState.preset = preset;
+    if (preset === 'anders') {
+        slotWizardState.step = 'anders';
+        renderWizard();
+    } else {
+        slotWizardState.step = 'loading';
+        renderWizard();
+        searchSlots();
+    }
+}
+
+function renderWizardAnders(body) {
+    const s = slotWizardState.andersInput;
+    const fallback = !googleAccessToken;
+
+    body.innerHTML = `
+        <h2 class="wizard-step-title">Eigen tijd</h2>
+        <p class="wizard-step-sub">Kies exacte tijd en duur</p>
+
+        ${fallback ? `
+            <div class="fallback-warn">
+                <b>Google Calendar niet verbonden.</b> De zoeker toont slots zonder agenda-check.
+                <br><button type="button" data-action="connect">Nu verbinden</button>
+            </div>
+        ` : ''}
+
+        <div class="anders-form">
+            <label for="wizard-anders-tijd">Starttijd</label>
+            <input type="time" id="wizard-anders-tijd" value="${s.starttijd}">
+            <label for="wizard-anders-duur">Duur (minuten)</label>
+            <input type="number" id="wizard-anders-duur" min="15" step="15" value="${s.duur}">
+        </div>
+
+        <div class="wizard-actions">
+            <button type="button" data-action="back">Terug</button>
+            <button type="button" class="primary" data-action="search">Zoek slots</button>
+        </div>
+    `;
+
+    body.querySelector('[data-action="back"]').addEventListener('click', () => {
+        slotWizardState.step = 'preset';
+        renderWizard();
+    });
+    body.querySelector('[data-action="search"]').addEventListener('click', () => {
+        // Bewaar starttijd (leeg veld valt terug op vorige waarde) en duur
+        // (binnen 15..24u; ongeldige input → default 60).
+        const tijdVal = body.querySelector('#wizard-anders-tijd').value;
+        if (tijdVal) slotWizardState.andersInput.starttijd = tijdVal;
+        const rawDuur = parseInt(body.querySelector('#wizard-anders-duur').value, 10);
+        slotWizardState.andersInput.duur = (rawDuur > 0 && rawDuur <= 24 * 60) ? rawDuur : 60;
+        slotWizardState.step = 'loading';
+        renderWizard();
+        searchSlots();
+    });
+    const connectBtn = body.querySelector('[data-action="connect"]');
+    if (connectBtn) {
+        connectBtn.addEventListener('click', () => {
+            connectGoogleCalendar(() => renderWizard(), () => {});
+        });
+    }
+}
+function renderWizardResults(body) {
+    const spec = presetSpec(slotWizardState.preset, slotWizardState.andersInput);
+    const proposals = slotWizardState.proposals;
+    const contact = contactsData.find(c => c.id === slotWizardState.contactId);
+    const contactName = contact ? contact.name : '';
+    const proposalTitle = spec && spec.titelTemplate
+        ? spec.titelTemplate.replace('{naam}', contactName)
+        : 'Afspraak (voorstel)';
+
+    const labelParts = [];
+    if (slotWizardState.preset === 'lunch') labelParts.push('🍽 Lunch · 90 min');
+    else if (slotWizardState.preset === 'diner') labelParts.push('🍷 Diner · 3 uur');
+    else labelParts.push(`⚙️ Eigen · ${slotWizardState.andersInput?.duur ?? '?'} min`);
+    labelParts.push(`komende ${slotWizardState.horizon} dagen`);
+
+    body.innerHTML = `
+        <h2 class="wizard-step-title">Voorstellen</h2>
+        <p class="wizard-step-sub">${escapeHtml(labelParts.join(' · '))}</p>
+
+        ${proposals.length === 0 ? `
+            <div class="wizard-empty">
+                <div class="empty-title">Geen vrije slots gevonden</div>
+                <div>Probeer een langere horizon of andere tijden.</div>
+            </div>
+        ` : proposals.map((p, i) => {
+            const items = bouwAgendaItems(p.events, p.slot, proposalTitle);
+            const dayLabel = `${NL_WEEKDAYS_SHORT[p.date.getDay()]} ${p.date.getDate()} ${NL_MONTHS[p.date.getMonth()]}`;
+            const timedNaastVoorstel = items.filter(it => !it.allDay && !it.isProposal).length;
+            return `
+                <button type="button" class="wizard-slot" data-proposal-index="${i}">
+                    <div class="day-header">${escapeHtml(dayLabel)}</div>
+                    ${timedNaastVoorstel === 0 ? '<div class="wizard-agenda-row empty"><span class="time">Verder niks</span></div>' : ''}
+                    ${items.map(it => it.allDay ? `
+                        <div class="wizard-agenda-row allday">
+                            <span class="time">Hele dag</span>
+                            <span class="title">${escapeHtml(it.title)}</span>
+                        </div>
+                    ` : `
+                        <div class="wizard-agenda-row ${it.isProposal ? 'proposal' : ''}">
+                            <span class="time">${escapeHtml(it.start)}–${escapeHtml(it.end)}</span>
+                            <span class="title">${escapeHtml(it.title)}${it.isProposal ? ' ← voorstel' : ''}</span>
+                        </div>
+                    `).join('')}
+                </button>
+            `;
+        }).join('')}
+
+        <div class="wizard-actions">
+            <button type="button" data-action="back">Terug</button>
+            ${slotWizardState.heeftMeer ? '<button type="button" data-action="next">Volgende 5 →</button>' : ''}
+        </div>
+    `;
+
+    body.querySelectorAll('.wizard-slot[data-proposal-index]').forEach(el => {
+        el.addEventListener('click', () => {
+            const idx = parseInt(el.dataset.proposalIndex, 10);
+            chooseSlot(idx);
+        });
+    });
+    body.querySelector('[data-action="back"]').addEventListener('click', () => {
+        slotWizardState.step = 'preset';
+        slotWizardState.searchStartOffset = 0;
+        slotWizardState.heeftMeer = false;
+        renderWizard();
+    });
+    const nextBtn = body.querySelector('[data-action="next"]');
+    if (nextBtn) {
+        nextBtn.addEventListener('click', () => {
+            slotWizardState.step = 'loading';
+            renderWizard();
+            searchSlots(true);
+        });
+    }
+}
+
+function chooseSlot(idx) {
+    const proposal = slotWizardState.proposals[idx];
+    if (!proposal) return;
+
+    const spec = presetSpec(slotWizardState.preset, slotWizardState.andersInput);
+    const contact = contactsData.find(c => c.id === slotWizardState.contactId);
+    const contactName = contact ? contact.name : '';
+    const title = spec && spec.titelTemplate
+        ? spec.titelTemplate.replace('{naam}', contactName)
+        : null;
+
+    const prefill = {
+        date: proposal.dateStr,
+        start_time: proposal.slot.startTime,
+        end_time: proposal.slot.endTime,
+        title
+    };
+
+    if (slotWizardModal) slotWizardModal.hide();
+    setTimeout(() => {
+        showInteractionModal(slotWizardState.contactId, null, prefill);
+    }, 300);
+}
+
+function renderWizardLoading(body) {
+    body.innerHTML = `
+        <div class="wizard-loading">
+            <div class="spinner"></div>
+            <div>${googleAccessToken ? 'Zoeken in Google Calendar…' : 'Voorstellen genereren…'}</div>
+        </div>
+    `;
+}
+
+async function searchSlots(paginate = false) {
+    slotWizardSearchId++;
+    const mySearchId = slotWizardSearchId;
+
+    const spec = presetSpec(slotWizardState.preset, slotWizardState.andersInput);
+    if (!spec) {
+        if (mySearchId !== slotWizardSearchId) return;
+        slotWizardState.proposals = [];
+        slotWizardState.heeftMeer = false;
+        slotWizardState.step = 'results';
+        renderWizard();
+        return;
+    }
+
+    const proposals = [];
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    const hasCalendar = !!googleAccessToken;
+    const startOffset = paginate ? slotWizardState.searchStartOffset : 0;
+    let laatsteGevuldOffset = -1;
+
+    for (let dayOffset = startOffset; dayOffset < slotWizardState.horizon; dayOffset++) {
+        if (proposals.length >= 5) break;
+
+        const d = new Date(today);
+        d.setDate(d.getDate() + dayOffset);
+        const dateStr = `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
+
+        let events = [];
+        let slot;
+
+        if (hasCalendar) {
+            events = await listCalendarEventsForDay(dateStr);
+            // User heeft ondertussen wizard gesloten / opnieuw geopend?
+            // Drop dit resultaat om stale writes te voorkomen.
+            if (mySearchId !== slotWizardSearchId) return;
+            slot = vindVrijeSlot(events, spec.startVensterVan, spec.startVensterTot, spec.duur);
+        } else {
+            // Fallback: geen check, gebruik gewoon de preset-start.
+            slot = { startTime: spec.startVensterVan, endTime: addMinutes(spec.startVensterVan, spec.duur) };
+        }
+
+        if (slot) {
+            proposals.push({ dateStr, date: d, slot, events });
+            laatsteGevuldOffset = dayOffset;
+        }
+    }
+
+    if (mySearchId !== slotWizardSearchId) return;
+    slotWizardState.proposals = proposals;
+    slotWizardState.searchStartOffset = laatsteGevuldOffset + 1;
+    slotWizardState.heeftMeer = proposals.length >= 5 && slotWizardState.searchStartOffset < slotWizardState.horizon;
+    slotWizardState.step = 'results';
+    renderWizard();
+}
+
 // Ingang voor "nieuwe afspraak". Checkt eerst of Google Calendar verbonden
 // is. Nooit-verbonden gebruikers zien geen prompt. Ooit-verbonden zonder
 // actieve token krijgen een keuze: opnieuw verbinden of doorgaan zonder
@@ -721,24 +1078,24 @@ let calendarReconnectModal = null;
 
 function openNewInteraction(contactId) {
     if (googleAccessToken) {
-        showInteractionModal(contactId);
+        openSlotWizard(contactId);
         return;
     }
     const everConnected = localStorage.getItem('google_calendar_ever_connected') === 'true';
     if (!everConnected) {
-        showInteractionModal(contactId);
+        openSlotWizard(contactId);
         return;
     }
     if (typeof google === 'undefined' || !google.accounts) {
         // GIS niet geladen — geen zin om te prompten, gewoon door.
-        showInteractionModal(contactId);
+        openSlotWizard(contactId);
         return;
     }
     // Toon de prompt en onthoud voor welk contact we straks openen
     pendingInteractionContactId = contactId;
     if (!calendarReconnectModal) {
         const el = document.getElementById('calendar-reconnect-modal');
-        if (!el) { showInteractionModal(contactId); return; }
+        if (!el) { openSlotWizard(contactId); return; }
         calendarReconnectModal = new bootstrap.Modal(el);
     }
     calendarReconnectModal.show();
@@ -747,10 +1104,10 @@ function openNewInteraction(contactId) {
 function handleCalendarReconnectClick() {
     const contactId = pendingInteractionContactId;
     if (calendarReconnectModal) calendarReconnectModal.hide();
-    // Start OAuth-flow; open interactie-modal in beide takken zodra klaar
+    // Start OAuth-flow; open slot-wizard in beide takken zodra klaar
     connectGoogleCalendar(
-        () => { if (contactId) showInteractionModal(contactId); },
-        () => { if (contactId) showInteractionModal(contactId); }
+        () => { if (contactId) openSlotWizard(contactId); },
+        () => { if (contactId) openSlotWizard(contactId); }
     );
     pendingInteractionContactId = null;
 }
@@ -758,7 +1115,7 @@ function handleCalendarReconnectClick() {
 function handleCalendarSkipClick() {
     const contactId = pendingInteractionContactId;
     if (calendarReconnectModal) calendarReconnectModal.hide();
-    if (contactId) showInteractionModal(contactId);
+    if (contactId) openSlotWizard(contactId);
     pendingInteractionContactId = null;
 }
 
@@ -1336,7 +1693,7 @@ function generateUniqueId() {
  * @param {string} contactId - The contact ID
  * @param {string} [interactionId] - Optional interaction ID for editing
  */
-function showInteractionModal(contactId, interactionId = null) {
+function showInteractionModal(contactId, interactionId = null, prefill = null) {
     // Reset form
     document.getElementById('interaction-form').reset();
 
@@ -1358,6 +1715,18 @@ function showInteractionModal(contactId, interactionId = null) {
     availEl.style.display = 'none';
     availEl.textContent = '';
 
+    // Slot-zoeker prefill (Task 12 van de slot-zoeker plan).
+    // Alleen bij NIEUWE afspraken (interactionId is null).
+    if (!interactionId && prefill) {
+        if (prefill.date) document.getElementById('interaction-date').value = prefill.date;
+        if (prefill.start_time) document.getElementById('interaction-start-time').value = prefill.start_time;
+        if (prefill.end_time) document.getElementById('interaction-end-time').value = prefill.end_time;
+        if (prefill.title) {
+            const titleEl = document.getElementById('interaction-title');
+            if (!titleEl.value) titleEl.value = prefill.title;
+        }
+    }
+
     if (interactionId) {
         // ── Bewerkmodus ──────────────────────────────────────────
         const contact = contactsData.find(c => c.id === contactId);
@@ -1373,6 +1742,9 @@ function showInteractionModal(contactId, interactionId = null) {
         const interactionDate = rawDate.substring(0, 10);
 
         document.getElementById('interaction-modal-title').textContent = 'Contact Bewerken';
+        deleteInteractionBtn.dataset.contactId = contactId;
+        deleteInteractionBtn.dataset.interactionId = interaction.id;
+        deleteInteractionBtn.classList.remove('d-none');
         document.getElementById('interaction-id').value = interaction.id;
         document.getElementById('interaction-calendar-event-id').value = interaction.google_calendar_event_id || '';
         document.getElementById('interaction-title').value = interaction.title || '';
@@ -1392,6 +1764,9 @@ function showInteractionModal(contactId, interactionId = null) {
     } else {
         // ── Nieuw contactmoment ───────────────────────────────────
         document.getElementById('interaction-modal-title').textContent = 'Contact Vastleggen';
+        deleteInteractionBtn.classList.add('d-none');
+        delete deleteInteractionBtn.dataset.contactId;
+        delete deleteInteractionBtn.dataset.interactionId;
     }
 
     interactionModal.show();
@@ -1951,6 +2326,80 @@ async function checkGoogleAvailability(dateStr) {
     }
 }
 
+// Haal alle events op voor een datum-blok 07:00-23:00 lokale tijd.
+// Retourneert een array van {start:'HH:MM', end:'HH:MM', title} voor
+// timed events en {allDay:true, title} voor all-day events.
+// All-day events tellen alleen als informatie in de mini-view; ze
+// blokkeren geen slot-detectie (dat gebeurt in vindVrijeSlot).
+// Filtert wel declined events uit.
+async function listCalendarEventsForDay(dateStr) {
+    if (!googleAccessToken) return [];
+
+    // RFC3339 met lokale timezone-offset. new Date(...).toISOString() zou
+    // naar UTC converteren en dan een verkeerd dag-venster geven.
+    function localRfc3339(dateStr, hhmm) {
+        const [y, mo, d] = dateStr.split('-').map(Number);
+        const [h, mi] = hhmm.split(':').map(Number);
+        const dt = new Date(y, mo - 1, d, h, mi, 0, 0);
+        const tzOffsetMin = -dt.getTimezoneOffset();
+        const sign = tzOffsetMin >= 0 ? '+' : '-';
+        const abs = Math.abs(tzOffsetMin);
+        const oh = String(Math.floor(abs / 60)).padStart(2, '0');
+        const om = String(abs % 60).padStart(2, '0');
+        const pad = (n) => String(n).padStart(2, '0');
+        return `${y}-${pad(mo)}-${pad(d)}T${pad(h)}:${pad(mi)}:00${sign}${oh}:${om}`;
+    }
+
+    const timeMin = encodeURIComponent(localRfc3339(dateStr, '07:00'));
+    const timeMax = encodeURIComponent(localRfc3339(dateStr, '23:00'));
+    const url = `https://www.googleapis.com/calendar/v3/calendars/primary/events?timeMin=${timeMin}&timeMax=${timeMax}&singleEvents=true&orderBy=startTime`;
+
+    try {
+        const res = await fetch(url, {
+            headers: { 'Authorization': `Bearer ${googleAccessToken}` }
+        });
+        // 401 = token verlopen. Clear zodat searchSlots in fallback-modus
+        // valt en de reconnect-prompt straks weer verschijnt (zelfde
+        // patroon als checkGoogleAvailability).
+        if (res.status === 401) googleAccessToken = null;
+        if (!res.ok) return [];
+        const data = await res.json();
+        const items = data.items || [];
+
+        return items
+            .filter(ev => {
+                if (ev.status === 'cancelled') return false; // recurring-uitzonderingen
+                if (!ev.start) return false;
+                // Declined: kijk in ev.attendees waar self === true
+                if (ev.attendees && ev.attendees.some(a => a.self && a.responseStatus === 'declined')) return false;
+                // Transparent all-day events (bijv. verjaardagen) mag blijven — puur info.
+                // Transparent timed events (persoonlijke "vrij"-blokken) filteren.
+                if (ev.start.dateTime && ev.transparency === 'transparent') return false;
+                return true;
+            })
+            .map(ev => {
+                if (!ev.start.dateTime) {
+                    // All-day: informatie-only, blokkeert geen slot.
+                    return { allDay: true, title: ev.summary || '(geen titel)' };
+                }
+                const s = new Date(ev.start.dateTime);
+                const e = new Date(ev.end.dateTime);
+                const fmt = (d) => `${String(d.getHours()).padStart(2,'0')}:${String(d.getMinutes()).padStart(2,'0')}`;
+                return { start: fmt(s), end: fmt(e), title: ev.summary || '(geen titel)' };
+            })
+            .sort((a, b) => {
+                // All-day items eerst, daarna timed op start-tijd.
+                if (a.allDay && !b.allDay) return -1;
+                if (!a.allDay && b.allDay) return 1;
+                if (a.allDay && b.allDay) return 0;
+                return a.start.localeCompare(b.start);
+            });
+    } catch (err) {
+        console.warn('listCalendarEventsForDay faalde:', err);
+        return [];
+    }
+}
+
 /**
  * Bouw de start/end objecten voor een Google Calendar event
  */
@@ -2051,10 +2500,6 @@ async function deleteCalendarEvent(eventId) {
  * @param {string} interactionId - The interaction ID
  */
 async function deleteInteraction(contactId, interactionId) {
-    if (!confirm('Weet je zeker dat je deze interactie wilt verwijderen?')) {
-        return;
-    }
-
     const contactIndex = contactsData.findIndex(c => c.id === contactId);
     if (contactIndex === -1) return;
 

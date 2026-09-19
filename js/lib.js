@@ -76,6 +76,21 @@
         return n === 1 ? 'dag' : 'dagen';
     }
 
+    function parseTimeString(hhmm) {
+        const [h, m] = String(hhmm).split(':').map(Number);
+        return h * 60 + m;
+    }
+
+    function formatTimeString(minutes) {
+        const h = Math.floor(minutes / 60);
+        const m = minutes % 60;
+        return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`;
+    }
+
+    function addMinutes(hhmm, minutes) {
+        return formatTimeString(parseTimeString(hhmm) + minutes);
+    }
+
     // --- Interaction helpers -------------------------------------------
 
     function getPastInteractions(contact, today) {
@@ -186,6 +201,80 @@
         return `${d.getDate()} ${NL_MONTHS[d.getMonth()]}`;
     }
 
+    // --- Slot-zoeker ---------------------------------------------------
+
+    function presetSpec(preset, andersInput) {
+        if (preset === 'lunch') {
+            return { startVensterVan: '11:30', startVensterTot: '12:00', duur: 90, titelTemplate: 'Lunch met {naam}' };
+        }
+        if (preset === 'diner') {
+            return { startVensterVan: '18:00', startVensterTot: '19:30', duur: 180, titelTemplate: 'Diner met {naam}' };
+        }
+        if (preset === 'anders') {
+            const t = (andersInput && andersInput.starttijd) || '14:00';
+            const d = (andersInput && andersInput.duur) || 60;
+            return { startVensterVan: t, startVensterTot: t, duur: d, titelTemplate: null };
+        }
+        return null;
+    }
+
+    // Zoek de eerste starttijd binnen [startVensterVan, startVensterTot]
+    // (stepping 15 min) waar het blok [start, start+duur) geen enkel event
+    // overlapt. Voor "Anders"-modus (van==tot) wordt alleen die exacte
+    // starttijd geprobeerd. Retourneert {startTime, endTime} of null.
+    function vindVrijeSlot(events, startVensterVan, startVensterTot, duur, stapMinuten) {
+        const stap = stapMinuten || 15;
+        const eindeVanDag = 24 * 60 - 1;
+        const vanMin = parseTimeString(startVensterVan);
+        const totMin = parseTimeString(startVensterTot);
+        // All-day events blokkeren geen slots (informatie-only), dus filter ze uit.
+        const eventRanges = (events || [])
+            .filter(e => !e.allDay && e.start && e.end)
+            .map(e => ({
+                start: parseTimeString(e.start),
+                end: parseTimeString(e.end)
+            }));
+
+        // Voor Anders: van==tot, dus één iteratie.
+        for (let kand = vanMin; kand <= totMin; kand += stap) {
+            const einde = kand + duur;
+            if (einde > eindeVanDag) continue;
+            const overlaps = eventRanges.some(ev => kand < ev.end && einde > ev.start);
+            if (!overlaps) {
+                return { startTime: formatTimeString(kand), endTime: formatTimeString(einde) };
+            }
+            if (vanMin === totMin) break; // geen stepping in Anders-modus
+        }
+        return null;
+    }
+
+    // Combineer bestaande events met het voorstel-slot en sorteer op
+    // start-tijd. Events krijgen isProposal=false, het voorstel true.
+    // All-day events komen bovenaan (in binnengekomen volgorde), timed
+    // events daarna chronologisch gesorteerd — inclusief het voorstel.
+    // Nodig voor de agenda-mini-view in Stap 4 van de slot-zoeker.
+    function bouwAgendaItems(events, slot, proposalTitle) {
+        const allDay = (events || [])
+            .filter(e => e.allDay)
+            .map(e => ({ allDay: true, title: e.title, isProposal: false }));
+        const timed = (events || [])
+            .filter(e => !e.allDay && e.start && e.end)
+            .map(e => ({
+                start: e.start,
+                end: e.end,
+                title: e.title,
+                isProposal: false
+            }));
+        timed.push({
+            start: slot.startTime,
+            end: slot.endTime,
+            title: proposalTitle,
+            isProposal: true
+        });
+        timed.sort((a, b) => parseTimeString(a.start) - parseTimeString(b.start));
+        return allDay.concat(timed);
+    }
+
     // --- Contact info helpers ------------------------------------------
 
     function findCustomFieldValue(contact, patterns) {
@@ -251,6 +340,7 @@
         AVATAR_FALLBACK_COLOR,
         // date helpers
         parseLocalDate, startOfDay, daysBetween, dagWoord,
+        parseTimeString, formatTimeString, addMinutes,
         // interaction helpers
         getPastInteractions, hasFuturePlannedInteraction,
         daysSinceLastPastInteraction, getLastPastInteractionDate,
@@ -267,6 +357,10 @@
         // avatar
         getContactInitials,
         // sort
-        urgencyRank
+        urgencyRank,
+        // slot-zoeker
+        presetSpec,
+        vindVrijeSlot,
+        bouwAgendaItems
     };
 }));
