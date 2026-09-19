@@ -218,6 +218,33 @@
         return null;
     }
 
+    // Zoek de eerste starttijd binnen [startVensterVan, startVensterTot]
+    // (stepping 15 min) waar het blok [start, start+duur) geen enkel event
+    // overlapt. Voor "Anders"-modus (van==tot) wordt alleen die exacte
+    // starttijd geprobeerd. Retourneert {startTime, endTime} of null.
+    function vindVrijeSlot(events, startVensterVan, startVensterTot, duur, stapMinuten) {
+        const stap = stapMinuten || 15;
+        const eindeVanDag = 24 * 60 - 1;
+        const vanMin = parseTimeString(startVensterVan);
+        const totMin = parseTimeString(startVensterTot);
+        const eventRanges = (events || []).map(e => ({
+            start: parseTimeString(e.start),
+            end: parseTimeString(e.end)
+        }));
+
+        // Voor Anders: van==tot, dus één iteratie.
+        for (let kand = vanMin; kand <= totMin; kand += stap) {
+            const einde = kand + duur;
+            if (einde > eindeVanDag) continue;
+            const overlaps = eventRanges.some(ev => kand < ev.end && einde > ev.start);
+            if (!overlaps) {
+                return { startTime: formatTimeString(kand), endTime: formatTimeString(einde) };
+            }
+            if (vanMin === totMin) break; // geen stepping in Anders-modus
+        }
+        return null;
+    }
+
     // --- Contact info helpers ------------------------------------------
 
     function findCustomFieldValue(contact, patterns) {
@@ -302,6 +329,7 @@
         // sort
         urgencyRank,
         // slot-zoeker
-        presetSpec
+        presetSpec,
+        vindVrijeSlot
     };
 }));
