@@ -878,8 +878,68 @@ function renderWizardAnders(body) {
         });
     }
 }
-// Stub — vervangen door Task 11 (results).
-function renderWizardResults(body) { body.innerHTML = '<p>Results komen in Task 11</p>'; }
+function renderWizardResults(body) {
+    const spec = presetSpec(slotWizardState.preset, slotWizardState.andersInput);
+    const proposals = slotWizardState.proposals;
+    const contact = contactsData.find(c => c.id === slotWizardState.contactId);
+    const contactName = contact ? contact.name : '';
+    const proposalTitle = spec && spec.titelTemplate
+        ? spec.titelTemplate.replace('{naam}', contactName)
+        : 'Afspraak (voorstel)';
+
+    const labelParts = [];
+    if (slotWizardState.preset === 'lunch') labelParts.push('🍽 Lunch · 90 min');
+    else if (slotWizardState.preset === 'diner') labelParts.push('🍷 Diner · 3 uur');
+    else labelParts.push(`⚙️ Eigen · ${slotWizardState.andersInput.duur} min`);
+    labelParts.push(`komende ${slotWizardState.horizon} dagen`);
+
+    body.innerHTML = `
+        <h2 class="wizard-step-title">Voorstellen</h2>
+        <p class="wizard-step-sub">${escapeHtml(labelParts.join(' · '))}</p>
+
+        ${proposals.length === 0 ? `
+            <div class="wizard-empty">
+                <div class="empty-title">Geen vrije slots gevonden</div>
+                <div>Probeer een langere horizon of andere tijden.</div>
+            </div>
+        ` : proposals.map((p, i) => {
+            const items = bouwAgendaItems(p.events, p.slot, proposalTitle);
+            const dayLabel = `${['zo','ma','di','wo','do','vr','za'][p.date.getDay()]} ${p.date.getDate()} ${['jan','feb','mrt','apr','mei','jun','jul','aug','sep','okt','nov','dec'][p.date.getMonth()]}`;
+            return `
+                <div class="wizard-slot" data-proposal-index="${i}">
+                    <div class="day-header">${escapeHtml(dayLabel)}</div>
+                    ${items.length === 1 ? '<div class="wizard-agenda-row empty"><span class="time">Verder niks</span></div>' : ''}
+                    ${items.map(it => `
+                        <div class="wizard-agenda-row ${it.isProposal ? 'proposal' : ''}">
+                            <span class="time">${escapeHtml(it.start)}–${escapeHtml(it.end)}</span>
+                            <span class="title">${escapeHtml(it.title)}${it.isProposal ? ' ← voorstel' : ''}</span>
+                        </div>
+                    `).join('')}
+                </div>
+            `;
+        }).join('')}
+
+        <div class="wizard-actions">
+            <button type="button" data-action="back">Terug</button>
+        </div>
+    `;
+
+    body.querySelectorAll('.wizard-slot[data-proposal-index]').forEach(el => {
+        el.addEventListener('click', () => {
+            const idx = parseInt(el.dataset.proposalIndex, 10);
+            chooseSlot(idx);
+        });
+    });
+    body.querySelector('[data-action="back"]').addEventListener('click', () => {
+        slotWizardState.step = 'preset';
+        renderWizard();
+    });
+}
+
+function chooseSlot(idx) {
+    // Stub — invulling in Task 12.
+    console.log('chooseSlot', idx, slotWizardState.proposals[idx]);
+}
 
 function renderWizardLoading(body) {
     body.innerHTML = `
