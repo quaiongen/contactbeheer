@@ -1981,12 +1981,17 @@ async function listCalendarEventsForDay(dateStr) {
         const res = await fetch(url, {
             headers: { 'Authorization': `Bearer ${googleAccessToken}` }
         });
+        // 401 = token verlopen. Clear zodat searchSlots in fallback-modus
+        // valt en de reconnect-prompt straks weer verschijnt (zelfde
+        // patroon als checkGoogleAvailability).
+        if (res.status === 401) googleAccessToken = null;
         if (!res.ok) return [];
         const data = await res.json();
         const items = data.items || [];
 
         return items
             .filter(ev => {
+                if (ev.status === 'cancelled') return false; // recurring-uitzonderingen
                 if (!ev.start || !ev.start.dateTime) return false; // skip all-day
                 if (ev.transparency === 'transparent') return false; // skip vrij-blokken
                 // Declined: kijk in ev.attendees waar self === true
