@@ -267,7 +267,19 @@ function setupEventListeners() {
         const contactId = deleteInteractionBtn.dataset.contactId;
         const interactionId = deleteInteractionBtn.dataset.interactionId;
         if (!contactId || !interactionId) return;
-        if (!confirm('Weet je zeker dat je deze interactie wilt verwijderen? Dit verwijdert ook de Google Calendar-afspraak.')) return;
+
+        // Calendar-waarschuwing alleen tonen als user verbonden is EN
+        // deze interactie een gekoppeld Calendar-event heeft.
+        const contact = contactsData.find(c => c.id === contactId);
+        const interaction = contact && contact.interactions
+            ? contact.interactions.find(i => i.id === interactionId)
+            : null;
+        const raaktCalendar = !!googleAccessToken && !!(interaction && interaction.google_calendar_event_id);
+        const bericht = raaktCalendar
+            ? 'Weet je zeker dat je deze interactie wilt verwijderen? Dit verwijdert ook de Google Calendar-afspraak.'
+            : 'Weet je zeker dat je deze interactie wilt verwijderen?';
+
+        if (!confirm(bericht)) return;
         interactionModal.hide();
         setTimeout(() => deleteInteraction(contactId, interactionId), 300);
     });
