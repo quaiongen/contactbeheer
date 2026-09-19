@@ -715,6 +715,10 @@ function handlePlan(contact) {
 // --- Slot-zoeker wizard ---------------------------------------------------
 
 let slotWizardModal = null;
+// Monotonic token dat incrementeert bij elke nieuwe wizard-open of preset-pick.
+// searchSlots capturet de waarde bij start en dropt zijn resultaat als de user
+// tussentijds de wizard sloot of opnieuw opende.
+let slotWizardSearchId = 0;
 let slotWizardState = {
     contactId: null,
     step: 'preset',       // 'preset' | 'anders' | 'loading' | 'results'
@@ -725,6 +729,7 @@ let slotWizardState = {
 };
 
 function openSlotWizard(contactId) {
+    slotWizardSearchId++;   // invalidate lopende searchSlots-aanroepen
     slotWizardState = {
         contactId,
         step: 'preset',
@@ -739,7 +744,11 @@ function openSlotWizard(contactId) {
         showInteractionModal(contactId);
         return;
     }
-    if (!slotWizardModal) slotWizardModal = new bootstrap.Modal(el);
+    if (!slotWizardModal) {
+        slotWizardModal = new bootstrap.Modal(el);
+        // Bij sluiten via X/Esc/backdrop: invalidate lopende searchSlots.
+        el.addEventListener('hidden.bs.modal', () => { slotWizardSearchId++; });
+    }
     renderWizard();
     slotWizardModal.show();
 }
@@ -882,8 +891,12 @@ function renderWizardLoading(body) {
 }
 
 async function searchSlots() {
+    slotWizardSearchId++;
+    const mySearchId = slotWizardSearchId;
+
     const spec = presetSpec(slotWizardState.preset, slotWizardState.andersInput);
     if (!spec) {
+        if (mySearchId !== slotWizardSearchId) return;
         slotWizardState.proposals = [];
         slotWizardState.step = 'results';
         renderWizard();
@@ -893,6 +906,7 @@ async function searchSlots() {
     const proposals = [];
     const today = new Date();
     today.setHours(0, 0, 0, 0);
+    const hasCalendar = !!googleAccessToken;
 
     for (let dayOffset = 0; dayOffset < slotWizardState.horizon; dayOffset++) {
         if (proposals.length >= 5) break;
@@ -904,8 +918,11 @@ async function searchSlots() {
         let events = [];
         let slot;
 
-        if (googleAccessToken) {
+        if (hasCalendar) {
             events = await listCalendarEventsForDay(dateStr);
+            // User heeft ondertussen wizard gesloten / opnieuw geopend?
+            // Drop dit resultaat om stale writes te voorkomen.
+            if (mySearchId !== slotWizardSearchId) return;
             slot = vindVrijeSlot(events, spec.startVensterVan, spec.startVensterTot, spec.duur);
         } else {
             // Fallback: geen check, gebruik gewoon de preset-start.
@@ -917,6 +934,7 @@ async function searchSlots() {
         }
     }
 
+    if (mySearchId !== slotWizardSearchId) return;
     slotWizardState.proposals = proposals;
     slotWizardState.step = 'results';
     renderWizard();
