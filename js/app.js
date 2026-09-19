@@ -821,7 +821,52 @@ function handlePresetPick(preset) {
 
 // Stubs voor de andere render-functies + searchSlots (worden vervangen in
 // Tasks 9-11)
-function renderWizardAnders(body) { body.innerHTML = '<p>Anders-stap komt in Task 9</p>'; }
+function renderWizardAnders(body) {
+    const s = slotWizardState.andersInput;
+    const fallback = !googleAccessToken;
+
+    body.innerHTML = `
+        <h2 class="wizard-step-title">Eigen tijd</h2>
+        <p class="wizard-step-sub">Kies exacte tijd en duur</p>
+
+        ${fallback ? `
+            <div class="fallback-warn">
+                <b>Google Calendar niet verbonden.</b> De zoeker toont slots zonder agenda-check.
+                <br><button type="button" data-action="connect">Nu verbinden</button>
+            </div>
+        ` : ''}
+
+        <div class="anders-form">
+            <label for="wizard-anders-tijd">Starttijd</label>
+            <input type="time" id="wizard-anders-tijd" value="${s.starttijd}">
+            <label for="wizard-anders-duur">Duur (minuten)</label>
+            <input type="number" id="wizard-anders-duur" min="15" step="15" value="${s.duur}">
+        </div>
+
+        <div class="wizard-actions">
+            <button type="button" data-action="back">Terug</button>
+            <button type="button" class="primary" data-action="search">Zoek slots</button>
+        </div>
+    `;
+
+    body.querySelector('[data-action="back"]').addEventListener('click', () => {
+        slotWizardState.step = 'preset';
+        renderWizard();
+    });
+    body.querySelector('[data-action="search"]').addEventListener('click', () => {
+        slotWizardState.andersInput.starttijd = body.querySelector('#wizard-anders-tijd').value;
+        slotWizardState.andersInput.duur = parseInt(body.querySelector('#wizard-anders-duur').value, 10) || 60;
+        slotWizardState.step = 'loading';
+        renderWizard();
+        searchSlots();
+    });
+    const connectBtn = body.querySelector('[data-action="connect"]');
+    if (connectBtn) {
+        connectBtn.addEventListener('click', () => {
+            connectGoogleCalendar(() => renderWizard(), () => {});
+        });
+    }
+}
 function renderWizardLoading(body) { body.innerHTML = '<p>Loading komt in Task 10</p>'; }
 function renderWizardResults(body) { body.innerHTML = '<p>Results komen in Task 11</p>'; }
 function searchSlots() { console.log('searchSlots stub — Task 10'); }
