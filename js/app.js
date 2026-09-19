@@ -1028,24 +1028,24 @@ let calendarReconnectModal = null;
 
 function openNewInteraction(contactId) {
     if (googleAccessToken) {
-        showInteractionModal(contactId);
+        openSlotWizard(contactId);
         return;
     }
     const everConnected = localStorage.getItem('google_calendar_ever_connected') === 'true';
     if (!everConnected) {
-        showInteractionModal(contactId);
+        openSlotWizard(contactId);
         return;
     }
     if (typeof google === 'undefined' || !google.accounts) {
         // GIS niet geladen — geen zin om te prompten, gewoon door.
-        showInteractionModal(contactId);
+        openSlotWizard(contactId);
         return;
     }
     // Toon de prompt en onthoud voor welk contact we straks openen
     pendingInteractionContactId = contactId;
     if (!calendarReconnectModal) {
         const el = document.getElementById('calendar-reconnect-modal');
-        if (!el) { showInteractionModal(contactId); return; }
+        if (!el) { openSlotWizard(contactId); return; }
         calendarReconnectModal = new bootstrap.Modal(el);
     }
     calendarReconnectModal.show();
@@ -1054,10 +1054,10 @@ function openNewInteraction(contactId) {
 function handleCalendarReconnectClick() {
     const contactId = pendingInteractionContactId;
     if (calendarReconnectModal) calendarReconnectModal.hide();
-    // Start OAuth-flow; open interactie-modal in beide takken zodra klaar
+    // Start OAuth-flow; open slot-wizard in beide takken zodra klaar
     connectGoogleCalendar(
-        () => { if (contactId) showInteractionModal(contactId); },
-        () => { if (contactId) showInteractionModal(contactId); }
+        () => { if (contactId) openSlotWizard(contactId); },
+        () => { if (contactId) openSlotWizard(contactId); }
     );
     pendingInteractionContactId = null;
 }
@@ -1065,7 +1065,7 @@ function handleCalendarReconnectClick() {
 function handleCalendarSkipClick() {
     const contactId = pendingInteractionContactId;
     if (calendarReconnectModal) calendarReconnectModal.hide();
-    if (contactId) showInteractionModal(contactId);
+    if (contactId) openSlotWizard(contactId);
     pendingInteractionContactId = null;
 }
 
