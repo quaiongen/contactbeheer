@@ -748,7 +748,9 @@ let slotWizardState = {
     preset: null,         // 'lunch' | 'diner' | 'anders'
     andersInput: { starttijd: '14:00', duur: 60 },
     horizon: 30,
-    proposals: []         // gevuld in results-stap
+    proposals: [],        // gevuld in results-stap
+    searchStartOffset: 0, // dagOffset waar volgende zoek-actie start (paginatie)
+    heeftMeer: false      // true als "Volgende 5" nog resultaten kan opleveren
 };
 
 function openSlotWizard(contactId) {
@@ -759,7 +761,9 @@ function openSlotWizard(contactId) {
         preset: null,
         andersInput: { starttijd: '14:00', duur: 60 },
         horizon: 30,
-        proposals: []
+        proposals: [],
+        searchStartOffset: 0,
+        heeftMeer: false
     };
     const el = document.getElementById('slot-wizard-modal');
     if (!el) {
@@ -950,6 +954,7 @@ function renderWizardResults(body) {
 
         <div class="wizard-actions">
             <button type="button" data-action="back">Terug</button>
+            ${slotWizardState.heeftMeer ? '<button type="button" data-action="next">Volgende 5 →</button>' : ''}
         </div>
     `;
 
@@ -961,8 +966,18 @@ function renderWizardResults(body) {
     });
     body.querySelector('[data-action="back"]').addEventListener('click', () => {
         slotWizardState.step = 'preset';
+        slotWizardState.searchStartOffset = 0;
+        slotWizardState.heeftMeer = false;
         renderWizard();
     });
+    const nextBtn = body.querySelector('[data-action="next"]');
+    if (nextBtn) {
+        nextBtn.addEventListener('click', () => {
+            slotWizardState.step = 'loading';
+            renderWizard();
+            searchSlots(true);
+        });
+    }
 }
 
 function chooseSlot(idx) {
@@ -998,7 +1013,7 @@ function renderWizardLoading(body) {
     `;
 }
 
-async function searchSlots() {
+async function searchSlots(paginate = false) {
     slotWizardSearchId++;
     const mySearchId = slotWizardSearchId;
 
@@ -1006,6 +1021,7 @@ async function searchSlots() {
     if (!spec) {
         if (mySearchId !== slotWizardSearchId) return;
         slotWizardState.proposals = [];
+        slotWizardState.heeftMeer = false;
         slotWizardState.step = 'results';
         renderWizard();
         return;
@@ -1015,8 +1031,10 @@ async function searchSlots() {
     const today = new Date();
     today.setHours(0, 0, 0, 0);
     const hasCalendar = !!googleAccessToken;
+    const startOffset = paginate ? slotWizardState.searchStartOffset : 0;
+    let laatsteGevuldOffset = -1;
 
-    for (let dayOffset = 0; dayOffset < slotWizardState.horizon; dayOffset++) {
+    for (let dayOffset = startOffset; dayOffset < slotWizardState.horizon; dayOffset++) {
         if (proposals.length >= 5) break;
 
         const d = new Date(today);
@@ -1039,11 +1057,14 @@ async function searchSlots() {
 
         if (slot) {
             proposals.push({ dateStr, date: d, slot, events });
+            laatsteGevuldOffset = dayOffset;
         }
     }
 
     if (mySearchId !== slotWizardSearchId) return;
     slotWizardState.proposals = proposals;
+    slotWizardState.searchStartOffset = laatsteGevuldOffset + 1;
+    slotWizardState.heeftMeer = proposals.length >= 5 && slotWizardState.searchStartOffset < slotWizardState.horizon;
     slotWizardState.step = 'results';
     renderWizard();
 }
