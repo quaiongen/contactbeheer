@@ -712,6 +712,120 @@ function handlePlan(contact) {
     openNewInteraction(contact.id);
 }
 
+// --- Slot-zoeker wizard ---------------------------------------------------
+
+let slotWizardModal = null;
+let slotWizardState = {
+    contactId: null,
+    step: 'preset',       // 'preset' | 'anders' | 'loading' | 'results'
+    preset: null,         // 'lunch' | 'diner' | 'anders'
+    andersInput: { starttijd: '14:00', duur: 60 },
+    horizon: 30,
+    proposals: []         // gevuld in results-stap
+};
+
+function openSlotWizard(contactId) {
+    slotWizardState = {
+        contactId,
+        step: 'preset',
+        preset: null,
+        andersInput: { starttijd: '14:00', duur: 60 },
+        horizon: 30,
+        proposals: []
+    };
+    const el = document.getElementById('slot-wizard-modal');
+    if (!el) {
+        // Fallback: als de modal-HTML ontbreekt, gewoon direct interaction openen.
+        showInteractionModal(contactId);
+        return;
+    }
+    if (!slotWizardModal) slotWizardModal = new bootstrap.Modal(el);
+    renderWizard();
+    slotWizardModal.show();
+}
+
+function renderWizard() {
+    const body = document.getElementById('slot-wizard-body');
+    if (!body) return;
+    if (slotWizardState.step === 'preset') return renderWizardPreset(body);
+    if (slotWizardState.step === 'anders') return renderWizardAnders(body);
+    if (slotWizardState.step === 'loading') return renderWizardLoading(body);
+    if (slotWizardState.step === 'results') return renderWizardResults(body);
+}
+
+function renderWizardPreset(body) {
+    const contact = contactsData.find(c => c.id === slotWizardState.contactId);
+    const contactName = contact ? contact.name : '';
+    const fallback = !googleAccessToken;
+
+    body.innerHTML = `
+        <h2 class="wizard-step-title">Zoek een vrij moment</h2>
+        <p class="wizard-step-sub">${escapeHtml('Voor afspraak met ' + contactName)}</p>
+
+        ${fallback ? `
+            <div class="fallback-warn">
+                <b>Google Calendar niet verbonden.</b> De zoeker toont slots zonder agenda-check. Elke dag in de horizon krijgt één voorstel.
+                <br><button type="button" data-action="connect">Nu verbinden</button>
+            </div>
+        ` : ''}
+
+        <button class="preset-btn" type="button" data-preset="lunch">
+            <span class="preset-icon">🍽</span><span class="preset-title">Lunch</span>
+            <div class="preset-meta">Start tussen 11:30–12:00 · 90 min</div>
+        </button>
+        <button class="preset-btn" type="button" data-preset="diner">
+            <span class="preset-icon">🍷</span><span class="preset-title">Diner</span>
+            <div class="preset-meta">Start tussen 18:00–19:30 · 3 uur</div>
+        </button>
+        <button class="preset-btn" type="button" data-preset="anders">
+            <span class="preset-icon">⚙️</span><span class="preset-title">Anders</span>
+            <div class="preset-meta">Eigen tijd + duur</div>
+        </button>
+
+        <div class="horizon-box">
+            <label>Aantal dagen vooruit</label>
+            <input type="number" min="1" max="365" value="${slotWizardState.horizon}" id="wizard-horizon-input">
+        </div>
+    `;
+
+    body.querySelectorAll('.preset-btn').forEach(btn => {
+        btn.addEventListener('click', () => handlePresetPick(btn.dataset.preset));
+    });
+    const horizonInput = body.querySelector('#wizard-horizon-input');
+    horizonInput.addEventListener('change', () => {
+        const v = parseInt(horizonInput.value, 10);
+        if (v > 0 && v <= 365) slotWizardState.horizon = v;
+    });
+    const connectBtn = body.querySelector('[data-action="connect"]');
+    if (connectBtn) {
+        connectBtn.addEventListener('click', () => {
+            connectGoogleCalendar(
+                () => renderWizard(),  // success: rerender zonder fallback-warn
+                () => {}                // failure: blijf in fallback
+            );
+        });
+    }
+}
+
+function handlePresetPick(preset) {
+    slotWizardState.preset = preset;
+    if (preset === 'anders') {
+        slotWizardState.step = 'anders';
+        renderWizard();
+    } else {
+        slotWizardState.step = 'loading';
+        renderWizard();
+        searchSlots();
+    }
+}
+
+// Stubs voor de andere render-functies + searchSlots (worden vervangen in
+// Tasks 9-11)
+function renderWizardAnders(body) { body.innerHTML = '<p>Anders-stap komt in Task 9</p>'; }
+function renderWizardLoading(body) { body.innerHTML = '<p>Loading komt in Task 10</p>'; }
+function renderWizardResults(body) { body.innerHTML = '<p>Results komen in Task 11</p>'; }
+function searchSlots() { console.log('searchSlots stub — Task 10'); }
+
 // Ingang voor "nieuwe afspraak". Checkt eerst of Google Calendar verbonden
 // is. Nooit-verbonden gebruikers zien geen prompt. Ooit-verbonden zonder
 // actieve token krijgen een keuze: opnieuw verbinden of doorgaan zonder
