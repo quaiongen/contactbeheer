@@ -1951,6 +1951,61 @@ async function checkGoogleAvailability(dateStr) {
     }
 }
 
+// Haal alle events op voor een datum-blok 07:00-23:00 lokale tijd.
+// Retourneert een array van {start:'HH:MM', end:'HH:MM', title}
+// gesorteerd op start-tijd. Filtert all-day, declined en transparent
+// events uit (die tellen niet als "bezet").
+async function listCalendarEventsForDay(dateStr) {
+    if (!googleAccessToken) return [];
+
+    // RFC3339 met lokale timezone-offset. new Date(...).toISOString() zou
+    // naar UTC converteren en dan een verkeerd dag-venster geven.
+    function localRfc3339(dateStr, hhmm) {
+        const [y, mo, d] = dateStr.split('-').map(Number);
+        const [h, mi] = hhmm.split(':').map(Number);
+        const dt = new Date(y, mo - 1, d, h, mi, 0, 0);
+        const tzOffsetMin = -dt.getTimezoneOffset();
+        const sign = tzOffsetMin >= 0 ? '+' : '-';
+        const abs = Math.abs(tzOffsetMin);
+        const oh = String(Math.floor(abs / 60)).padStart(2, '0');
+        const om = String(abs % 60).padStart(2, '0');
+        const pad = (n) => String(n).padStart(2, '0');
+        return `${y}-${pad(mo)}-${pad(d)}T${pad(h)}:${pad(mi)}:00${sign}${oh}:${om}`;
+    }
+
+    const timeMin = encodeURIComponent(localRfc3339(dateStr, '07:00'));
+    const timeMax = encodeURIComponent(localRfc3339(dateStr, '23:00'));
+    const url = `https://www.googleapis.com/calendar/v3/calendars/primary/events?timeMin=${timeMin}&timeMax=${timeMax}&singleEvents=true&orderBy=startTime`;
+
+    try {
+        const res = await fetch(url, {
+            headers: { 'Authorization': `Bearer ${googleAccessToken}` }
+        });
+        if (!res.ok) return [];
+        const data = await res.json();
+        const items = data.items || [];
+
+        return items
+            .filter(ev => {
+                if (!ev.start || !ev.start.dateTime) return false; // skip all-day
+                if (ev.transparency === 'transparent') return false; // skip vrij-blokken
+                // Declined: kijk in ev.attendees waar self === true
+                if (ev.attendees && ev.attendees.some(a => a.self && a.responseStatus === 'declined')) return false;
+                return true;
+            })
+            .map(ev => {
+                const s = new Date(ev.start.dateTime);
+                const e = new Date(ev.end.dateTime);
+                const fmt = (d) => `${String(d.getHours()).padStart(2,'0')}:${String(d.getMinutes()).padStart(2,'0')}`;
+                return { start: fmt(s), end: fmt(e), title: ev.summary || '(geen titel)' };
+            })
+            .sort((a, b) => a.start.localeCompare(b.start));
+    } catch (err) {
+        console.warn('listCalendarEventsForDay faalde:', err);
+        return [];
+    }
+}
+
 /**
  * Bouw de start/end objecten voor een Google Calendar event
  */
