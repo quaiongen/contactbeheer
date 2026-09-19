@@ -869,10 +869,58 @@ function renderWizardAnders(body) {
         });
     }
 }
-// Stubs — vervangen door Tasks 10 (loading + searchSlots) en 11 (results).
-function renderWizardLoading(body) { body.innerHTML = '<p>Loading komt in Task 10</p>'; }
+// Stub — vervangen door Task 11 (results).
 function renderWizardResults(body) { body.innerHTML = '<p>Results komen in Task 11</p>'; }
-function searchSlots() { console.log('searchSlots stub — Task 10'); }
+
+function renderWizardLoading(body) {
+    body.innerHTML = `
+        <div class="wizard-loading">
+            <div class="spinner"></div>
+            <div>${googleAccessToken ? 'Zoeken in Google Calendar…' : 'Voorstellen genereren…'}</div>
+        </div>
+    `;
+}
+
+async function searchSlots() {
+    const spec = presetSpec(slotWizardState.preset, slotWizardState.andersInput);
+    if (!spec) {
+        slotWizardState.proposals = [];
+        slotWizardState.step = 'results';
+        renderWizard();
+        return;
+    }
+
+    const proposals = [];
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+
+    for (let dayOffset = 0; dayOffset < slotWizardState.horizon; dayOffset++) {
+        if (proposals.length >= 5) break;
+
+        const d = new Date(today);
+        d.setDate(d.getDate() + dayOffset);
+        const dateStr = `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
+
+        let events = [];
+        let slot;
+
+        if (googleAccessToken) {
+            events = await listCalendarEventsForDay(dateStr);
+            slot = vindVrijeSlot(events, spec.startVensterVan, spec.startVensterTot, spec.duur);
+        } else {
+            // Fallback: geen check, gebruik gewoon de preset-start.
+            slot = { startTime: spec.startVensterVan, endTime: addMinutes(spec.startVensterVan, spec.duur) };
+        }
+
+        if (slot) {
+            proposals.push({ dateStr, date: d, slot, events });
+        }
+    }
+
+    slotWizardState.proposals = proposals;
+    slotWizardState.step = 'results';
+    renderWizard();
+}
 
 // Ingang voor "nieuwe afspraak". Checkt eerst of Google Calendar verbonden
 // is. Nooit-verbonden gebruikers zien geen prompt. Ooit-verbonden zonder
