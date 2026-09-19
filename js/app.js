@@ -819,8 +819,6 @@ function handlePresetPick(preset) {
     }
 }
 
-// Stubs voor de andere render-functies + searchSlots (worden vervangen in
-// Tasks 9-11)
 function renderWizardAnders(body) {
     const s = slotWizardState.andersInput;
     const fallback = !googleAccessToken;
@@ -854,8 +852,12 @@ function renderWizardAnders(body) {
         renderWizard();
     });
     body.querySelector('[data-action="search"]').addEventListener('click', () => {
-        slotWizardState.andersInput.starttijd = body.querySelector('#wizard-anders-tijd').value;
-        slotWizardState.andersInput.duur = parseInt(body.querySelector('#wizard-anders-duur').value, 10) || 60;
+        // Bewaar starttijd (leeg veld valt terug op vorige waarde) en duur
+        // (binnen 15..24u; ongeldige input → default 60).
+        const tijdVal = body.querySelector('#wizard-anders-tijd').value;
+        if (tijdVal) slotWizardState.andersInput.starttijd = tijdVal;
+        const rawDuur = parseInt(body.querySelector('#wizard-anders-duur').value, 10);
+        slotWizardState.andersInput.duur = (rawDuur > 0 && rawDuur <= 24 * 60) ? rawDuur : 60;
         slotWizardState.step = 'loading';
         renderWizard();
         searchSlots();
@@ -867,6 +869,7 @@ function renderWizardAnders(body) {
         });
     }
 }
+// Stubs — vervangen door Tasks 10 (loading + searchSlots) en 11 (results).
 function renderWizardLoading(body) { body.innerHTML = '<p>Loading komt in Task 10</p>'; }
 function renderWizardResults(body) { body.innerHTML = '<p>Results komen in Task 11</p>'; }
 function searchSlots() { console.log('searchSlots stub — Task 10'); }
