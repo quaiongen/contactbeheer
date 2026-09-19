@@ -928,11 +928,17 @@ function renderWizardResults(body) {
         ` : proposals.map((p, i) => {
             const items = bouwAgendaItems(p.events, p.slot, proposalTitle);
             const dayLabel = `${NL_WEEKDAYS_SHORT[p.date.getDay()]} ${p.date.getDate()} ${NL_MONTHS[p.date.getMonth()]}`;
+            const timedNaastVoorstel = items.filter(it => !it.allDay && !it.isProposal).length;
             return `
                 <button type="button" class="wizard-slot" data-proposal-index="${i}">
                     <div class="day-header">${escapeHtml(dayLabel)}</div>
-                    ${items.length === 1 ? '<div class="wizard-agenda-row empty"><span class="time">Verder niks</span></div>' : ''}
-                    ${items.map(it => `
+                    ${timedNaastVoorstel === 0 ? '<div class="wizard-agenda-row empty"><span class="time">Verder niks</span></div>' : ''}
+                    ${items.map(it => it.allDay ? `
+                        <div class="wizard-agenda-row allday">
+                            <span class="time">Hele dag</span>
+                            <span class="title">${escapeHtml(it.title)}</span>
+                        </div>
+                    ` : `
                         <div class="wizard-agenda-row ${it.isProposal ? 'proposal' : ''}">
                             <span class="time">${escapeHtml(it.start)}–${escapeHtml(it.end)}</span>
                             <span class="title">${escapeHtml(it.title)}${it.isProposal ? ' ← voorstel' : ''}</span>
@@ -2300,9 +2306,11 @@ async function checkGoogleAvailability(dateStr) {
 }
 
 // Haal alle events op voor een datum-blok 07:00-23:00 lokale tijd.
-// Retourneert een array van {start:'HH:MM', end:'HH:MM', title}
-// gesorteerd op start-tijd. Filtert all-day, declined en transparent
-// events uit (die tellen niet als "bezet").
+// Retourneert een array van {start:'HH:MM', end:'HH:MM', title} voor
+// timed events en {allDay:true, title} voor all-day events.
+// All-day events tellen alleen als informatie in de mini-view; ze
+// blokkeren geen slot-detectie (dat gebeurt in vindVrijeSlot).
+// Filtert wel declined events uit.
 async function listCalendarEventsForDay(dateStr) {
     if (!googleAccessToken) return [];
 
@@ -2340,19 +2348,31 @@ async function listCalendarEventsForDay(dateStr) {
         return items
             .filter(ev => {
                 if (ev.status === 'cancelled') return false; // recurring-uitzonderingen
-                if (!ev.start || !ev.start.dateTime) return false; // skip all-day
-                if (ev.transparency === 'transparent') return false; // skip vrij-blokken
+                if (!ev.start) return false;
                 // Declined: kijk in ev.attendees waar self === true
                 if (ev.attendees && ev.attendees.some(a => a.self && a.responseStatus === 'declined')) return false;
+                // Transparent all-day events (bijv. verjaardagen) mag blijven — puur info.
+                // Transparent timed events (persoonlijke "vrij"-blokken) filteren.
+                if (ev.start.dateTime && ev.transparency === 'transparent') return false;
                 return true;
             })
             .map(ev => {
+                if (!ev.start.dateTime) {
+                    // All-day: informatie-only, blokkeert geen slot.
+                    return { allDay: true, title: ev.summary || '(geen titel)' };
+                }
                 const s = new Date(ev.start.dateTime);
                 const e = new Date(ev.end.dateTime);
                 const fmt = (d) => `${String(d.getHours()).padStart(2,'0')}:${String(d.getMinutes()).padStart(2,'0')}`;
                 return { start: fmt(s), end: fmt(e), title: ev.summary || '(geen titel)' };
             })
-            .sort((a, b) => a.start.localeCompare(b.start));
+            .sort((a, b) => {
+                // All-day items eerst, daarna timed op start-tijd.
+                if (a.allDay && !b.allDay) return -1;
+                if (!a.allDay && b.allDay) return 1;
+                if (a.allDay && b.allDay) return 0;
+                return a.start.localeCompare(b.start);
+            });
     } catch (err) {
         console.warn('listCalendarEventsForDay faalde:', err);
         return [];

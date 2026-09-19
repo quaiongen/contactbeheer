@@ -126,3 +126,37 @@ test('bouwAgendaItems: events krijgen isProposal=false', () => {
     const items = bouwAgendaItems(events, { startTime: '11:00', endTime: '12:00' }, 'Y');
     assert.equal(items[0].isProposal, false);
 });
+
+test('vindVrijeSlot: all-day event blokkeert NIET (info-only)', () => {
+    const events = [
+        { allDay: true, title: 'Vakantie' },
+        { start: '09:00', end: '10:00', title: 'Standup' }
+    ];
+    // Lunch-slot 12:00 zou vrij moeten zijn ondanks all-day vakantie.
+    const slot = vindVrijeSlot(events, '11:30', '12:00', 90);
+    assert.deepEqual(slot, { startTime: '11:30', endTime: '13:00' });
+});
+
+test('bouwAgendaItems: all-day events bovenaan, timed daarna gesorteerd', () => {
+    const events = [
+        { start: '14:00', end: '15:00', title: 'Klantcall' },
+        { allDay: true, title: 'Vakantie' },
+        { start: '09:00', end: '10:00', title: 'Standup' }
+    ];
+    const items = bouwAgendaItems(events, { startTime: '12:00', endTime: '13:30' }, 'Lunch');
+    assert.equal(items.length, 4);
+    assert.equal(items[0].allDay, true);
+    assert.equal(items[0].title, 'Vakantie');
+    assert.equal(items[1].title, 'Standup');
+    assert.equal(items[2].title, 'Lunch');
+    assert.equal(items[2].isProposal, true);
+    assert.equal(items[3].title, 'Klantcall');
+});
+
+test('bouwAgendaItems: alleen all-day + voorstel → voorstel als enige timed-item', () => {
+    const events = [{ allDay: true, title: 'Vakantie' }];
+    const items = bouwAgendaItems(events, { startTime: '12:00', endTime: '13:30' }, 'Lunch');
+    assert.equal(items.length, 2);
+    assert.equal(items[0].allDay, true);
+    assert.equal(items[1].isProposal, true);
+});

@@ -1112,6 +1112,9 @@ header h1.h5 {
 .wizard-agenda-row.proposal .time { color: #B23B32; font-weight: 700; }
 .wizard-agenda-row.proposal .title { color: #B23B32; font-weight: 600; }
 .wizard-agenda-row.empty { color: #8A93A0; font-style: italic; }
+.wizard-agenda-row.allday { background: #F1F3F5; border-radius: 4px; }
+.wizard-agenda-row.allday .time { color: #6C757D; font-style: italic; }
+.wizard-agenda-row.allday .title { color: #495057; }
 
 .wizard-empty {
     padding: 30px 20px;

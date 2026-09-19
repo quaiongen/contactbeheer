@@ -227,10 +227,13 @@
         const eindeVanDag = 24 * 60 - 1;
         const vanMin = parseTimeString(startVensterVan);
         const totMin = parseTimeString(startVensterTot);
-        const eventRanges = (events || []).map(e => ({
-            start: parseTimeString(e.start),
-            end: parseTimeString(e.end)
-        }));
+        // All-day events blokkeren geen slots (informatie-only), dus filter ze uit.
+        const eventRanges = (events || [])
+            .filter(e => !e.allDay && e.start && e.end)
+            .map(e => ({
+                start: parseTimeString(e.start),
+                end: parseTimeString(e.end)
+            }));
 
         // Voor Anders: van==tot, dus één iteratie.
         for (let kand = vanMin; kand <= totMin; kand += stap) {
@@ -247,22 +250,29 @@
 
     // Combineer bestaande events met het voorstel-slot en sorteer op
     // start-tijd. Events krijgen isProposal=false, het voorstel true.
+    // All-day events komen bovenaan (in binnengekomen volgorde), timed
+    // events daarna chronologisch gesorteerd — inclusief het voorstel.
     // Nodig voor de agenda-mini-view in Stap 4 van de slot-zoeker.
     function bouwAgendaItems(events, slot, proposalTitle) {
-        const items = (events || []).map(e => ({
-            start: e.start,
-            end: e.end,
-            title: e.title,
-            isProposal: false
-        }));
-        items.push({
+        const allDay = (events || [])
+            .filter(e => e.allDay)
+            .map(e => ({ allDay: true, title: e.title, isProposal: false }));
+        const timed = (events || [])
+            .filter(e => !e.allDay && e.start && e.end)
+            .map(e => ({
+                start: e.start,
+                end: e.end,
+                title: e.title,
+                isProposal: false
+            }));
+        timed.push({
             start: slot.startTime,
             end: slot.endTime,
             title: proposalTitle,
             isProposal: true
         });
-        items.sort((a, b) => parseTimeString(a.start) - parseTimeString(b.start));
-        return items;
+        timed.sort((a, b) => parseTimeString(a.start) - parseTimeString(b.start));
+        return allDay.concat(timed);
     }
 
     // --- Contact info helpers ------------------------------------------
