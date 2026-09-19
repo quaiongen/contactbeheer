@@ -1064,7 +1064,7 @@ header h1.h5 {
 }
 @keyframes slot-spin { to { transform: rotate(360deg); } }
 
-.slot {
+.wizard-slot {
     border: 1px solid #E1E5EA;
     border-radius: 10px;
     padding: 12px 14px;
@@ -1073,11 +1073,11 @@ header h1.h5 {
     background: white;
     transition: border-color 0.15s ease, box-shadow 0.15s ease;
 }
-.slot:hover {
+.wizard-slot:hover {
     border-color: #C6CCD4;
     box-shadow: 0 2px 6px rgba(0,0,0,0.04);
 }
-.slot .day-header {
+.wizard-slot .day-header {
     font-weight: 700;
     font-size: 14px;
     color: #151A21;
@@ -1085,28 +1085,28 @@ header h1.h5 {
     padding-bottom: 6px;
     border-bottom: 1px solid #EDF0F3;
 }
-.agenda-row {
+.wizard-agenda-row {
     display: flex;
     gap: 10px;
     padding: 3px 0;
     font-size: 12.5px;
 }
-.agenda-row .time {
+.wizard-agenda-row .time {
     color: #8A93A0;
     white-space: nowrap;
     width: 100px;
     font-variant-numeric: tabular-nums;
 }
-.agenda-row .title { color: #5B6470; }
-.agenda-row.proposal {
+.wizard-agenda-row .title { color: #5B6470; }
+.wizard-agenda-row.proposal {
     background: #FCF0EF;
     border-left: 3px solid #B23B32;
     margin: 4px -14px;
     padding: 6px 11px;
 }
-.agenda-row.proposal .time { color: #B23B32; font-weight: 700; }
-.agenda-row.proposal .title { color: #B23B32; font-weight: 600; }
-.agenda-row.empty { color: #8A93A0; font-style: italic; }
+.wizard-agenda-row.proposal .time { color: #B23B32; font-weight: 700; }
+.wizard-agenda-row.proposal .title { color: #B23B32; font-weight: 600; }
+.wizard-agenda-row.empty { color: #8A93A0; font-style: italic; }
 
 .wizard-empty {
     padding: 30px 20px;

@@ -21,7 +21,7 @@
 - `js/lib.js` — 3 nieuwe pure functies toevoegen aan de dual-export lijst (`presetSpec`, `vindVrijeSlot`, `bouwAgendaItems`) + helpers (`parseTimeString`, `addMinutes`, `formatTimeString`).
 - `js/app.js` — nieuwe functies: `openSlotWizard`, `renderWizardPreset/Anders/Loading/Results`, `handlePresetPick`, `listCalendarEventsForDay`, `searchSlots`, `chooseSlot`. Wijziging: `openNewInteraction` roept `openSlotWizard` aan i.p.v. `showInteractionModal`. Wijziging: `showInteractionModal` accepteert optionele `prefill`-parameter.
 - `index-dev.html` + `index.html` — nieuwe `#slot-wizard-modal` Bootstrap modal na de bestaande `#calendar-reconnect-modal`. Bump cache-buster.
-- `css/styles.css` — nieuwe klassen: `.slot-wizard-*`, `.preset-btn`, `.horizon-box`, `.anders-form`, `.slot`, `.day-header`, `.agenda-row`, `.agenda-row.proposal`, `.agenda-row.empty`, `.fallback-warn`, `.wizard-loading`.
+- `css/styles.css` — nieuwe klassen: `.wizard-step-title/sub`, `.preset-btn`, `.horizon-box`, `.anders-form`, `.wizard-slot`, `.day-header`, `.wizard-agenda-row`, `.wizard-agenda-row.proposal`, `.wizard-agenda-row.empty`, `.fallback-warn`, `.wizard-loading`, `.wizard-actions`.
 - `README.md` — sectie **Functies** uitbreiden met slot-zoeker bullet. `docs/superpowers/plans/` in projectstructuur.
 
 **Niet aanraken:**
@@ -1113,11 +1113,11 @@ function renderWizardResults(body) {
             const items = bouwAgendaItems(p.events, p.slot, proposalTitle);
             const dayLabel = `${['zo','ma','di','wo','do','vr','za'][p.date.getDay()]} ${p.date.getDate()} ${['jan','feb','mrt','apr','mei','jun','jul','aug','sep','okt','nov','dec'][p.date.getMonth()]}`;
             return `
-                <div class="slot" data-proposal-index="${i}">
+                <div class="wizard-slot" data-proposal-index="${i}">
                     <div class="day-header">${escapeHtml(dayLabel)}</div>
-                    ${items.length === 1 ? '<div class="agenda-row empty"><span class="time">Verder niks</span></div>' : ''}
+                    ${items.length === 1 ? '<div class="wizard-agenda-row empty"><span class="time">Verder niks</span></div>' : ''}
                     ${items.map(it => `
-                        <div class="agenda-row ${it.isProposal ? 'proposal' : ''}">
+                        <div class="wizard-agenda-row ${it.isProposal ? 'proposal' : ''}">
                             <span class="time">${escapeHtml(it.start)}–${escapeHtml(it.end)}</span>
                             <span class="title">${escapeHtml(it.title)}${it.isProposal ? ' ← voorstel' : ''}</span>
                         </div>
@@ -1131,7 +1131,7 @@ function renderWizardResults(body) {
         </div>
     `;
 
-    body.querySelectorAll('.slot[data-proposal-index]').forEach(el => {
+    body.querySelectorAll('.wizard-slot[data-proposal-index]').forEach(el => {
         el.addEventListener('click', () => {
             const idx = parseInt(el.dataset.proposalIndex, 10);
             chooseSlot(idx);
