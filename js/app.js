@@ -800,7 +800,7 @@ function renderWizardPreset(body) {
 
         ${fallback ? `
             <div class="fallback-warn">
-                <b>Google Calendar niet verbonden.</b> De zoeker toont slots zonder agenda-check. Elke dag in de horizon krijgt één voorstel.
+                <b>Google Calendar niet verbonden.</b> Kies een preset — het formulier opent direct met tijd en titel voorgevuld. De datum kies je zelf.
                 <br><button type="button" data-action="connect">Nu verbinden</button>
             </div>
         ` : ''}
@@ -848,11 +848,36 @@ function handlePresetPick(preset) {
     if (preset === 'anders') {
         slotWizardState.step = 'anders';
         renderWizard();
+    } else if (!googleAccessToken) {
+        // Geen Calendar → voorstellen hebben geen toegevoegde waarde. Skip
+        // meteen naar interaction-modal met tijd + titel voorgevuld.
+        openInteractionModalFromPreset();
     } else {
         slotWizardState.step = 'loading';
         renderWizard();
         searchSlots();
     }
+}
+
+// Sluit de wizard en opent de interaction-modal direct, zonder voorstellen-
+// stap. Gebruikt door de fallback-flow als Google Calendar niet verbonden is.
+// Datum blijft leeg → interaction-modal defaultt naar vandaag.
+function openInteractionModalFromPreset() {
+    const spec = presetSpec(slotWizardState.preset, slotWizardState.andersInput);
+    if (!spec) return;
+    const contact = contactsData.find(c => c.id === slotWizardState.contactId);
+    const contactName = contact ? contact.name : '';
+    const title = spec.titelTemplate
+        ? spec.titelTemplate.replace('{naam}', contactName)
+        : null;
+    const startTime = spec.startVensterVan;
+    const endTime = addMinutes(startTime, spec.duur);
+    const prefill = { start_time: startTime, end_time: endTime, title };
+
+    if (slotWizardModal) slotWizardModal.hide();
+    setTimeout(() => {
+        showInteractionModal(slotWizardState.contactId, null, prefill);
+    }, 300);
 }
 
 function renderWizardAnders(body) {
@@ -865,7 +890,7 @@ function renderWizardAnders(body) {
 
         ${fallback ? `
             <div class="fallback-warn">
-                <b>Google Calendar niet verbonden.</b> De zoeker toont slots zonder agenda-check.
+                <b>Google Calendar niet verbonden.</b> Vul tijd + duur in — het formulier opent direct.
                 <br><button type="button" data-action="connect">Nu verbinden</button>
             </div>
         ` : ''}
@@ -879,7 +904,7 @@ function renderWizardAnders(body) {
 
         <div class="wizard-actions">
             <button type="button" data-action="back">Terug</button>
-            <button type="button" class="primary" data-action="search">Zoek slots</button>
+            <button type="button" class="primary" data-action="search">${fallback ? 'Formulier openen' : 'Zoek slots'}</button>
         </div>
     `;
 
@@ -894,6 +919,10 @@ function renderWizardAnders(body) {
         if (tijdVal) slotWizardState.andersInput.starttijd = tijdVal;
         const rawDuur = parseInt(body.querySelector('#wizard-anders-duur').value, 10);
         slotWizardState.andersInput.duur = (rawDuur > 0 && rawDuur <= 24 * 60) ? rawDuur : 60;
+        if (!googleAccessToken) {
+            openInteractionModalFromPreset();
+            return;
+        }
         slotWizardState.step = 'loading';
         renderWizard();
         searchSlots();
