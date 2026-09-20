@@ -109,8 +109,11 @@ Overal in de app wordt hetzelfde detailscherm getoond:
 - Instelbaar hoeveel dagen vooruit gezocht wordt (default 30).
 - App zoekt via Google Calendar naar de eerste 5 dagen waarin je gekozen venster + duur past.
 - Elk voorstel wordt getoond als mini-dag-agenda: bestaande afspraken die dag + het voorstel-slot, chronologisch, voorstel gemarkeerd in rood.
+- All-day events (bijv. Vakantie) verschijnen bovenaan als grijze rij "Hele dag" — ze blokkeren geen slots, dienen als context.
 - Klik op een voorstel → het formulier opent met datum, tijd én titel ("Lunch met {naam}" of "Diner met {naam}") ingevuld.
-- Zonder Google Calendar-verbinding: wizard werkt beperkt (geen agenda-check) met een uitleg en optie om alsnog te verbinden.
+- Knop **"Volgende 5 →"** toont de eerstvolgende 5 dagen als je meer opties wil binnen de horizon.
+- Bij een interactie **verwijderen** in bewerkmodus verdwijnt óók de gekoppelde Google Calendar-afspraak.
+- **Zonder Google Calendar-verbinding**: wizard slaat de voorstellen-stap over — het formulier opent direct met tijd + titel voorgevuld (datum = vandaag; zelf te wijzigen).
 
 ### 🔍 Zoeken & filteren
 - Zoek contacten op naam via de zoekbalk (Contacten-tab).
