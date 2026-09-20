@@ -4,7 +4,7 @@ Een persoonlijke contactbeheer-app om bij te houden wanneer je contact hebt geha
 
 🔗 **Live app:** [quaiongen.github.io/contactbeheer](https://quaiongen.github.io/contactbeheer/)
 
-📖 **Volledige documentatie:** [Notion — Contactbeheer Documentatie](https://app.notion.com/p/3e1c13a2187c81b391c5fe000e91e6ac)
+📖 **Volledige documentatie:** [Notion — Contactbeheer Documentatie](https://app.notion.com/p/3e1c13a2187c81ddac48d3c9d7646b43)
 
 📋 **Backlog:** [Notion — Backlog Catch-up](https://app.notion.com/p/3e1c13a2187c80d987e7f90afc8355e3) (filter op `Project = Contactbeheer`)
 
