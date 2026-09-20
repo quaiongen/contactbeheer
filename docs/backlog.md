@@ -48,3 +48,40 @@ SELECT vault.update_secret(
 De function heet nu `dynamic-responder` (auto-gegenereerd bij deploy).
 Voor duidelijkheid delete-en en opnieuw deployen als `weekly-digest`.
 Daarna Vault-URL opnieuw updaten.
+
+## Multi-calendar in slot-zoeker (met view-only exception)
+
+Nu leest de slot-zoeker alleen de `primary` Google Calendar. Wens: alle
+eigen calendars meenemen voor slot-detectie **én** één specifieke calendar
+van iemand anders alleen tonen als context (niet slots blokkeren).
+
+Uitwerking (nog geen spec/plan):
+- `GET /calendar/v3/users/me/calendarList` ophalen bij eerste keer +
+  via een "Kalenders beheren"-scherm in het menu.
+- Per calendar 3 keuzes: **Blokkeert slots** / **Alleen tonen** / **Negeren**.
+- Defaults op basis van accessRole: `owner`/`writer` → Blokkeert, rest → Negeren.
+  Gebruiker zet handmatig calendars op "Alleen tonen".
+- Voorkeuren opslaan in Supabase (per-user) of localStorage (per browser).
+- `listCalendarEventsForDay` haalt events uit alle geselecteerde calendars,
+  tagt met `blocking: true/false`.
+- `vindVrijeSlot` filtert op `blocking === true`.
+- `bouwAgendaItems` toont ze allemaal; view-only krijgt aparte styling
+  (bijv. lichter/grijs).
+
+Scope-schatting: ~4-6 uur werk, eigen taken + tests. Start met brainstorm-
+sessie voor spec/plan.
+
+## Slot-zoeker: chooseSlot modal-transition robuuster
+
+In `chooseSlot` staat een `setTimeout(300)` tussen wizard sluiten en
+interaction-modal openen — matched met de Bootstrap-modal-transition van
+300 ms. Bij snelle heropening van de wizard kan de setTimeout alsnog vuren
+en de nieuwe wizard-state stompen.
+
+Fix: vervang de `setTimeout` door een `hidden.bs.modal`-event listener
+met `{ once: true }`:
+```js
+el.addEventListener('hidden.bs.modal', () => showInteractionModal(...), { once: true });
+```
+Nice-to-have, geen bug in normaal gebruik. Zie ook code-review Task 12 in
+`docs/superpowers/plans/2026-09-19-slot-zoeker.md`.
