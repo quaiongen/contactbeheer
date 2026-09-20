@@ -2,22 +2,6 @@
 
 Open werk dat buiten scope viel van de huidige implementatie-brief.
 
-## SQL nog te draaien op prod-Supabase
-
-Voordat `index.html` live kan met de nieuwe features, moeten op het
-productie-project deze scripts worden uitgevoerd (op dev zijn ze al
-gedraaid):
-
-- `SUPABASE_ATTEMPTS.sql` — nieuwe tabel `attempts` (stap 1 uit brief).
-- `SUPABASE_PHONE_EMAIL.sql` — kolommen `phone` en `email` op `contacts`.
-- `SUPABASE_FIX_PLANNED.sql` — eenmalige migratie: zet afspraken op
-  vandaag/later met `planned=false` alsnog op `planned=true`. Voor prod
-  alleen nuttig als er ooit dev-data via export/import is overgezet.
-
-Zonder deze scripts geeft productie een lege "Geprobeerd, nog geen
-reactie"-sectie en console-warnings, en gaan telefoon/e-mail-vaste
-velden niet opgeslagen worden.
-
 ## Wekelijkse herinneringsmail — openstaand
 
 Stap 1 t/m 4 van `docs/prompt-weekmail.md` zijn af (view, Edge Function,
@@ -64,7 +48,3 @@ SELECT vault.update_secret(
 De function heet nu `dynamic-responder` (auto-gegenereerd bij deploy).
 Voor duidelijkheid delete-en en opnieuw deployen als `weekly-digest`.
 Daarna Vault-URL opnieuw updaten.
-
-### 6. Prod-Supabase
-Zowel `01_view.sql` als de Edge Function + secrets + cron opnieuw
-opzetten op het productie-project. Nu alleen op dev.
