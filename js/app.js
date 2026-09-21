@@ -823,7 +823,11 @@ function renderWizardPreset(body) {
         </button>
         <button class="preset-btn" type="button" data-preset="anders">
             <span class="preset-icon">⚙️</span><span class="preset-title">Anders</span>
-            <div class="preset-meta">Eigen tijd + duur</div>
+            <div class="preset-meta">Eigen tijd + duur — slots zoeken</div>
+        </button>
+        <button class="preset-btn" type="button" data-preset="manual">
+            <span class="preset-icon">✏️</span><span class="preset-title">Zelf invullen</span>
+            <div class="preset-meta">Direct naar formulier — kies zelf datum + tijd</div>
         </button>
 
         <div class="horizon-box">
@@ -878,7 +882,10 @@ function renderWizardPreset(body) {
 
 function handlePresetPick(preset) {
     slotWizardState.preset = preset;
-    if (preset === 'anders') {
+    if (preset === 'manual') {
+        // Zelf invullen: skip wizard, open leeg formulier (datum = vandaag default).
+        openManualInteractionEntry();
+    } else if (preset === 'anders') {
         slotWizardState.step = 'anders';
         renderWizard();
     } else if (!googleAccessToken) {
@@ -890,6 +897,15 @@ function handlePresetPick(preset) {
         renderWizard();
         searchSlots();
     }
+}
+
+// Sluit de wizard en opent het lege interaction-formulier (geen prefill).
+// Datum defaultt naar vandaag via show.bs.modal-handler.
+function openManualInteractionEntry() {
+    if (slotWizardModal) slotWizardModal.hide();
+    setTimeout(() => {
+        showInteractionModal(slotWizardState.contactId);
+    }, 300);
 }
 
 // Sluit de wizard en opent de interaction-modal direct, zonder voorstellen-
