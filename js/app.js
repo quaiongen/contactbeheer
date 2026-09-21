@@ -2484,11 +2484,14 @@ function renderCalendarSettingsRows(body, calendarList) {
                     <div class="cal-name">${escapeHtml(cal.summary)}${cal.primary ? ' <span class="badge bg-secondary">primary</span>' : ''}</div>
                     <div class="cal-sub text-muted small">${escapeHtml(cal.id)}</div>
                 </div>
-                <select class="form-select form-select-sm" data-calendar-id="${escapeHtml(cal.id)}" data-summary="${escapeHtml(cal.summary)}">
-                    <option value="" ${currentMode === '' ? 'selected' : ''}>Negeren</option>
-                    <option value="blocking" ${currentMode === 'blocking' ? 'selected' : ''}>🚫 Blokkeert slots</option>
-                    <option value="view-only" ${currentMode === 'view-only' ? 'selected' : ''}>👁 Alleen tonen</option>
-                </select>
+                <div class="d-flex align-items-center gap-1">
+                    <select class="form-select form-select-sm" data-calendar-id="${escapeHtml(cal.id)}" data-summary="${escapeHtml(cal.summary)}">
+                        <option value="" ${currentMode === '' ? 'selected' : ''}>Negeren</option>
+                        <option value="blocking" ${currentMode === 'blocking' ? 'selected' : ''}>🚫 Blokkeert slots</option>
+                        <option value="view-only" ${currentMode === 'view-only' ? 'selected' : ''}>👁 Alleen tonen</option>
+                    </select>
+                    <span class="save-indicator" aria-live="polite"></span>
+                </div>
             </div>
         `;
     }).join('');
@@ -2500,7 +2503,15 @@ function renderCalendarSettingsRows(body, calendarList) {
             const calId = sel.dataset.calendarId;
             const summary = sel.dataset.summary;
             const val = sel.value;
+            const indicator = sel.parentElement.querySelector('.save-indicator');
+            indicator.textContent = '⟳';
+            indicator.classList.add('visible', 'saving');
             await saveCalendarPref(calId, val === '' ? null : val, summary);
+            indicator.textContent = '✓';
+            indicator.classList.remove('saving');
+            setTimeout(() => {
+                indicator.classList.remove('visible');
+            }, 1500);
         });
     });
 
