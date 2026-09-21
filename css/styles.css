@@ -407,6 +407,13 @@ body {
         width: 100%;
         justify-content: center;
     }
+
+    /* Modal-footer op mobile: Opslaan bovenaan (makkelijk bereikbaar met duim),
+       Annuleren midden, Verwijderen onder (destructive, weg van duim). DOM-order
+       blijft [Verwijderen, Annuleren, Opslaan] voor desktop-layout en tab-order. */
+    .modal-footer {
+        flex-direction: column-reverse;
+    }
 }
 
 /* Loading State */
