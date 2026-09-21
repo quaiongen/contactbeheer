@@ -49,7 +49,7 @@ let currentCategoryFilter = 'all';
 
 // Google Calendar
 const GOOGLE_CLIENT_ID = '427383300995-560ndb1vs21i1a8idhm4cm2m1u0h495v.apps.googleusercontent.com';
-const GOOGLE_SCOPES = 'https://www.googleapis.com/auth/calendar.events https://www.googleapis.com/auth/calendar.freebusy';
+const GOOGLE_SCOPES = 'https://www.googleapis.com/auth/calendar.events https://www.googleapis.com/auth/calendar.freebusy https://www.googleapis.com/auth/calendar.calendarlist.readonly';
 const GOOGLE_CONSENT_EXPIRY_MS = 60 * 24 * 60 * 60 * 1000; // 60 dagen
 let googleTokenClient = null;
 let googleAccessToken = null;
