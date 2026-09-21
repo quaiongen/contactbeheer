@@ -126,7 +126,15 @@ document.addEventListener('DOMContentLoaded', function() {
     });
 
     // Google Calendar button
-    document.getElementById('google-calendar-btn').addEventListener('click', () => connectGoogleCalendar());
+    document.getElementById('google-calendar-btn').addEventListener('click', () => {
+        // Niet verbonden → start OAuth direct (bewaar 1-click UX voor nieuwe users).
+        // Verbonden → open Kalender-beheer modal.
+        if (!googleAccessToken) {
+            connectGoogleCalendar();
+        } else {
+            openCalendarSettingsModal();
+        }
+    });
 
     // Bestaande verbinding? Markeer dat deze browser ooit gekoppeld is
     // geweest, ook voor gebruikers van vóór deze feature.
@@ -2406,6 +2414,101 @@ function getConfiguredCalendars() {
         mode: p.mode,
         calendarSummary: p.calendar_summary
     }));
+}
+
+// Wrapper voor ontkoppelen. Er was nog geen dedicated disconnect-functie;
+// centraliseert het + reset prefs-cache + wist ever-connected flag.
+function disconnectGoogleCalendar() {
+    googleAccessToken = null;
+    calendarPrefsCache = null;
+    localStorage.removeItem('google_calendar_ever_connected');
+    setGoogleCalendarUI(false);
+}
+
+let calendarSettingsModal = null;
+
+// Opent de Google Calendar-instellingen modal. Alleen aangeroepen als
+// googleAccessToken truthy is; menu-handler kiest zelf.
+async function openCalendarSettingsModal() {
+    const el = document.getElementById('calendar-settings-modal');
+    if (!el) return;
+    if (!calendarSettingsModal) calendarSettingsModal = new bootstrap.Modal(el);
+
+    const body = document.getElementById('calendar-settings-body');
+    body.innerHTML = '<p class="text-muted">Kalenders laden…</p>';
+    calendarSettingsModal.show();
+
+    const [calendarList] = await Promise.all([
+        fetchCalendarList(),
+        loadCalendarPrefs()
+    ]);
+
+    if (calendarList.length === 0) {
+        body.innerHTML = '<p class="text-danger">Kan kalenderlijst niet ophalen. Verbinding vernieuwen?</p>';
+        return;
+    }
+
+    // Bij eerste-keer opening: pas defaults toe voor calendars zonder pref.
+    // Owner/writer → blocking; rest blijft ongeschreven (= negeren).
+    const prefs = calendarPrefsCache || [];
+    const prefsMap = new Map(prefs.map(p => [p.calendar_id, p]));
+    for (const cal of calendarList) {
+        if (!prefsMap.has(cal.id)) {
+            if (cal.accessRole === 'owner' || cal.accessRole === 'writer') {
+                await saveCalendarPref(cal.id, 'blocking', cal.summary);
+            }
+        }
+    }
+
+    renderCalendarSettingsRows(body, calendarList);
+}
+
+function renderCalendarSettingsRows(body, calendarList) {
+    const prefs = calendarPrefsCache || [];
+    const prefsMap = new Map(prefs.map(p => [p.calendar_id, p.mode]));
+    const email = currentUser ? currentUser.email || '' : '';
+
+    const header = `
+        <div class="calendar-settings-status">
+            <div><b>✓ Verbonden</b>${email ? ` als ${escapeHtml(email)}` : ''}</div>
+            <a href="#" data-action="disconnect">Ontkoppelen</a>
+        </div>
+        <h6 class="mt-3 mb-2 text-muted">Jouw kalenders</h6>
+    `;
+
+    const rows = calendarList.map(cal => {
+        const currentMode = prefsMap.get(cal.id) || '';
+        return `
+            <div class="calendar-settings-row">
+                <div class="flex-grow-1 min-w-0">
+                    <div class="cal-name">${escapeHtml(cal.summary)}${cal.primary ? ' <span class="badge bg-secondary">primary</span>' : ''}</div>
+                    <div class="cal-sub text-muted small">${escapeHtml(cal.id)}</div>
+                </div>
+                <select class="form-select form-select-sm" data-calendar-id="${escapeHtml(cal.id)}" data-summary="${escapeHtml(cal.summary)}">
+                    <option value="" ${currentMode === '' ? 'selected' : ''}>Negeren</option>
+                    <option value="blocking" ${currentMode === 'blocking' ? 'selected' : ''}>🚫 Blokkeert slots</option>
+                    <option value="view-only" ${currentMode === 'view-only' ? 'selected' : ''}>👁 Alleen tonen</option>
+                </select>
+            </div>
+        `;
+    }).join('');
+
+    body.innerHTML = header + rows;
+
+    body.querySelectorAll('select[data-calendar-id]').forEach(sel => {
+        sel.addEventListener('change', async () => {
+            const calId = sel.dataset.calendarId;
+            const summary = sel.dataset.summary;
+            const val = sel.value;
+            await saveCalendarPref(calId, val === '' ? null : val, summary);
+        });
+    });
+
+    body.querySelector('[data-action="disconnect"]').addEventListener('click', (e) => {
+        e.preventDefault();
+        disconnectGoogleCalendar();
+        if (calendarSettingsModal) calendarSettingsModal.hide();
+    });
 }
 
 /**
