@@ -160,3 +160,55 @@ test('bouwAgendaItems: alleen all-day + voorstel → voorstel als enige timed-it
     assert.equal(items[0].allDay, true);
     assert.equal(items[1].isProposal, true);
 });
+
+// --- Multi-calendar: isBlocking-filter en view-only tagging ---
+
+test('vindVrijeSlot: view-only event blokkeert NIET (isBlocking=false)', () => {
+    const events = [
+        { start: '11:30', end: '12:30', title: 'Anna lunch', isBlocking: false }
+    ];
+    const slot = vindVrijeSlot(events, '11:30', '12:00', 90);
+    assert.deepEqual(slot, { startTime: '11:30', endTime: '13:00' });
+});
+
+test('vindVrijeSlot: undefined isBlocking telt als blocking (backwards-compat)', () => {
+    const events = [
+        { start: '11:30', end: '12:30', title: 'Meeting' }
+    ];
+    assert.equal(vindVrijeSlot(events, '11:30', '12:00', 90), null);
+});
+
+test('bouwAgendaItems: view-only event krijgt prefix + isViewOnly=true', () => {
+    const events = [
+        { start: '10:00', end: '11:00', title: 'X', isViewOnly: true, calendarSummary: 'Anna' }
+    ];
+    const items = bouwAgendaItems(events, { startTime: '12:00', endTime: '13:00' }, 'Y');
+    const viewOnly = items.find(it => it.isViewOnly);
+    assert.equal(viewOnly.title, 'Anna: X');
+    assert.equal(viewOnly.isViewOnly, true);
+});
+
+test('bouwAgendaItems: blocking event geen prefix, geen isViewOnly-flag', () => {
+    const events = [
+        { start: '10:00', end: '11:00', title: 'X' }
+    ];
+    const items = bouwAgendaItems(events, { startTime: '12:00', endTime: '13:00' }, 'Y');
+    const blocking = items.find(it => !it.isProposal);
+    assert.equal(blocking.title, 'X');
+    assert.notEqual(blocking.isViewOnly, true);
+});
+
+test('bouwAgendaItems: mix van view-only + blocking + all-day sorteert correct', () => {
+    const events = [
+        { start: '14:00', end: '15:00', title: 'Klantcall' },
+        { start: '10:00', end: '11:00', title: 'Lunch', isViewOnly: true, calendarSummary: 'Anna' },
+        { allDay: true, title: 'Vakantie' },
+        { start: '09:00', end: '10:00', title: 'Standup' }
+    ];
+    const items = bouwAgendaItems(events, { startTime: '12:00', endTime: '13:00' }, 'Voorstel');
+    assert.equal(items[0].allDay, true);
+    assert.equal(items[1].title, 'Standup');
+    assert.equal(items[2].title, 'Anna: Lunch');
+    assert.equal(items[3].title, 'Voorstel');
+    assert.equal(items[4].title, 'Klantcall');
+});

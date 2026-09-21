@@ -228,8 +228,10 @@
         const vanMin = parseTimeString(startVensterVan);
         const totMin = parseTimeString(startVensterTot);
         // All-day events blokkeren geen slots (informatie-only), dus filter ze uit.
+        // View-only events (isBlocking=false) blokkeren ook geen slots.
+        // Undefined isBlocking telt als blocking (backwards-compat met bestaande tests).
         const eventRanges = (events || [])
-            .filter(e => !e.allDay && e.start && e.end)
+            .filter(e => !e.allDay && e.isBlocking !== false && e.start && e.end)
             .map(e => ({
                 start: parseTimeString(e.start),
                 end: parseTimeString(e.end)
@@ -259,12 +261,16 @@
             .map(e => ({ allDay: true, title: e.title, isProposal: false }));
         const timed = (events || [])
             .filter(e => !e.allDay && e.start && e.end)
-            .map(e => ({
-                start: e.start,
-                end: e.end,
-                title: e.title,
-                isProposal: false
-            }));
+            .map(e => {
+                const isView = !!e.isViewOnly;
+                return {
+                    start: e.start,
+                    end: e.end,
+                    title: isView && e.calendarSummary ? `${e.calendarSummary}: ${e.title}` : e.title,
+                    isProposal: false,
+                    isViewOnly: isView
+                };
+            });
         timed.push({
             start: slot.startTime,
             end: slot.endTime,

@@ -972,7 +972,7 @@ function renderWizardResults(body) {
                             <span class="title">${escapeHtml(it.title)}</span>
                         </div>
                     ` : `
-                        <div class="wizard-agenda-row ${it.isProposal ? 'proposal' : ''}">
+                        <div class="wizard-agenda-row ${it.isProposal ? 'proposal' : ''}${it.isViewOnly ? ' view-only' : ''}">
                             <span class="time">${escapeHtml(it.start)}–${escapeHtml(it.end)}</span>
                             <span class="title">${escapeHtml(it.title)}${it.isProposal ? ' ← voorstel' : ''}</span>
                         </div>
