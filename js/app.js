@@ -828,17 +828,42 @@ function renderWizardPreset(body) {
 
         <div class="horizon-box">
             <label>Aantal dagen vooruit</label>
-            <input type="number" min="1" max="365" value="${slotWizardState.horizon}" id="wizard-horizon-input">
+            <div class="horizon-choices">
+                <button type="button" class="horizon-preset" data-horizon="30">30</button>
+                <button type="button" class="horizon-preset" data-horizon="60">60</button>
+                <button type="button" class="horizon-preset" data-horizon="90">90</button>
+                <span class="horizon-custom-label">Of eigen:</span>
+                <input type="number" min="1" max="365" value="${slotWizardState.horizon}" id="wizard-horizon-input">
+                <span class="horizon-unit">dagen</span>
+            </div>
         </div>
     `;
 
     body.querySelectorAll('.preset-btn').forEach(btn => {
         btn.addEventListener('click', () => handlePresetPick(btn.dataset.preset));
     });
+
+    // Highlight de juiste horizon-preset button als de huidige waarde matcht.
     const horizonInput = body.querySelector('#wizard-horizon-input');
+    const horizonBtns = body.querySelectorAll('.horizon-preset');
+    function reflectHorizon() {
+        horizonBtns.forEach(b => {
+            b.classList.toggle('active', parseInt(b.dataset.horizon, 10) === slotWizardState.horizon);
+        });
+    }
+    reflectHorizon();
+    horizonBtns.forEach(btn => {
+        btn.addEventListener('click', () => {
+            const v = parseInt(btn.dataset.horizon, 10);
+            slotWizardState.horizon = v;
+            horizonInput.value = v;
+            reflectHorizon();
+        });
+    });
     horizonInput.addEventListener('change', () => {
         const v = parseInt(horizonInput.value, 10);
         if (v > 0 && v <= 365) slotWizardState.horizon = v;
+        reflectHorizon();
     });
     const connectBtn = body.querySelector('[data-action="connect"]');
     if (connectBtn) {
