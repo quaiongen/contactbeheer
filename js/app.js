@@ -2525,6 +2525,7 @@ async function checkGoogleAvailability(dateStr) {
         const timeMax = encodeURIComponent(new Date(dateStr + 'T23:59:59').toISOString());
 
         // Multi-calendar: loop over configured calendars in plaats van hardcoded primary.
+        // Tag events per calendar met isViewOnly + calendarSummary voor consistente rendering.
         await loadCalendarPrefs();
         const configuredCals = getConfiguredCalendars();
         const perCalendarResponses = await Promise.all(configuredCals.map(async (cal) => {
@@ -2534,30 +2535,45 @@ async function checkGoogleAvailability(dateStr) {
                 if (r.status === 401) throw new Error('HTTP 401');
                 if (r.status === 404 || !r.ok) return [];
                 const d = await r.json();
-                return d.items || [];
+                const isView = cal.mode !== 'blocking';
+                return (d.items || []).map(ev => ({ ev, isViewOnly: isView, calendarSummary: cal.calendarSummary }));
             } catch (err) {
                 if (err.message === 'HTTP 401') throw err;
                 return [];
             }
         }));
-        const events = perCalendarResponses.flat().filter(ev => ev.status !== 'cancelled');
+        const tagged = perCalendarResponses.flat().filter(x => x.ev.status !== 'cancelled');
 
-        if (events.length === 0) {
+        // Splits all-day en timed, dedupe timed op event-id, sorteer.
+        const allDay = tagged.filter(x => x.ev.start.date && !x.ev.start.dateTime);
+        const timedSeen = new Set();
+        const timed = tagged
+            .filter(x => x.ev.start.dateTime)
+            .filter(x => {
+                if (timedSeen.has(x.ev.id)) return false;
+                timedSeen.add(x.ev.id);
+                return true;
+            })
+            .sort((a, b) => new Date(a.ev.start.dateTime) - new Date(b.ev.start.dateTime));
+
+        if (allDay.length === 0 && timed.length === 0) {
             availEl.innerHTML = '<span class="text-success"><i class="bi bi-check-circle"></i> Niets gepland die dag</span>';
         } else {
-            const rows = events.map(ev => {
-                let timeLabel;
-                if (ev.start.date && !ev.start.dateTime) {
-                    timeLabel = '<span class="badge bg-secondary me-1">Hele dag</span>';
-                } else {
-                    const s = new Date(ev.start.dateTime).toLocaleTimeString('nl-NL', { hour: '2-digit', minute: '2-digit' });
-                    const e = new Date(ev.end.dateTime).toLocaleTimeString('nl-NL', { hour: '2-digit', minute: '2-digit' });
-                    timeLabel = `<span class="text-muted" style="min-width:90px;display:inline-block">${s}–${e}</span>`;
-                }
-                const title = ev.summary || '(Geen titel)';
-                return `<div class="d-flex align-items-center gap-1 py-1 border-bottom">${timeLabel}<span>${title}</span></div>`;
+            const fmt = (iso) => new Date(iso).toLocaleTimeString('nl-NL', { hour: '2-digit', minute: '2-digit' });
+            const allDayRows = allDay.map(x => {
+                const isView = x.isViewOnly;
+                const title = x.ev.summary || '(geen titel)';
+                const cls = 'wizard-agenda-row allday' + (isView ? ' view-only' : '');
+                return `<div class="${cls}"><span class="time">Hele dag</span><span class="title">${escapeHtml(title)}</span></div>`;
             }).join('');
-            availEl.innerHTML = `<div class="border rounded p-2 bg-white mt-1">${rows}</div>`;
+            const timedRows = timed.map(x => {
+                const isView = x.isViewOnly;
+                const rawTitle = x.ev.summary || '(geen titel)';
+                const title = isView && x.calendarSummary ? `${x.calendarSummary}: ${rawTitle}` : rawTitle;
+                const cls = 'wizard-agenda-row' + (isView ? ' view-only' : '');
+                return `<div class="${cls}"><span class="time">${fmt(x.ev.start.dateTime)}–${fmt(x.ev.end.dateTime)}</span><span class="title">${escapeHtml(title)}</span></div>`;
+            }).join('');
+            availEl.innerHTML = `<div class="border rounded p-2 bg-white mt-1">${allDayRows}${timedRows}</div>`;
         }
     } catch (err) {
         if (err.message.includes('401')) {
