@@ -87,6 +87,8 @@ Menu-item **"Google Calendar"** opent voortaan een modal (was: directe toggle va
 
 **calendar-list caching:** in-memory voor de sessie. Modal-refresh = re-fetch.
 
+**prefs-caching:** `getConfiguredCalendars()` gebruikt een module-level in-memory cache die wordt gepopuleerd door `loadCalendarPrefs()` bij eerste wizard-open. Na elke pref-wijziging (upsert of delete via `saveCalendarPref`) wordt de cache lokaal bijgewerkt. Bij modal-close hoeft niets extra te gebeuren want elke individuele wijziging schrijft al naar Supabase én cache.
+
 ### Wizard-open / availability-check
 
 ```
@@ -165,6 +167,7 @@ Fallback: `getConfiguredCalendars()` retourneert `[{calendarId: 'primary', mode:
 
 - **Verdwenen calendar** (in prefs maar niet meer in calendarList): stil skippen bij events-fetch (`fetch` retourneert 404 → catch, continue). Rij blijft in tabel; user kan 'm bij volgende modal-open handmatig verwijderen (of via toekomstig auto-cleanup — niet in MVP).
 - **Rate limit / 401**: per-calendar 401 → clear token en fallback (zelfde als huidige gedrag).
+- **Transparent events per calendar**: bestaande filter `ev.transparency === 'transparent'` in `listCalendarEventsForDay` (voor timed events; all-day transparents blijven zichtbaar als info) blijft ongewijzigd én wordt uniform toegepast op elke calendar in de loop. Geen per-calendar override.
 - **> 250 events per dag per calendar**: Google API paginated; laten voor MVP (geen pagineerlogica), doc de limiet.
 - **User draait mode van view-only naar blocking (of andersom)**: geen cache-invalidation nodig; volgende wizard-open leest verse prefs.
 - **`primary` staat op "Negeren"**: gerespecteerd. User krijgt geen slots gefilterd op `primary`, alleen op andere blocking calendars. Rare edge case maar toegestaan.
