@@ -51,13 +51,16 @@ CREATE POLICY "user_calendar_preferences_own" ON user_calendar_preferences
 
 ## UI: Google Calendar modal
 
-Menu-item **"Google Calendar"** opent voortaan een modal (was: directe toggle van koppeling).
+Menu-item **"Google Calendar"** gedraagt zich afhankelijk van verbindingsstatus:
+- **Niet verbonden** → start direct de OAuth-flow (oud gedrag; geen modal). Preserves 1-click UX voor nieuwe/niet-verbonden users.
+- **Verbonden** → opent de modal met kalender-beheer.
 
-**Modal-header:** status + ontkoppel-link
-- Niet verbonden: `"Nog niet verbonden"` + knop **Verbinden**
-- Verbonden: `"✓ Verbonden als {email}"` + link *ontkoppelen*
+Op disconnect (via modal): modal auto-closes; volgende menu-klik start weer OAuth.
 
-**Modal-body (alleen als verbonden):**
+**Modal-header** (alleen zichtbaar bij verbonden state):
+- `"✓ Verbonden als {email}"` + link *ontkoppelen*
+
+**Modal-body:**
 - H4 "Jouw kalenders"
 - Lijst van rijen, één per calendar uit Google's calendarList:
   - Links: `<div>{calendar.summary}</div>` + subtekst `{calendar.id of accessRole}`
@@ -119,7 +122,8 @@ Fallback: `getConfiguredCalendars()` retourneert `[{calendarId: 'primary', mode:
 - `function getConfiguredCalendars()` — in-memory getter (populated by loadCalendarPrefs); fallback naar `[{calendarId:'primary', mode:'blocking'}]`
 - `async function openCalendarSettingsModal()` — orchestrator: fetch, merge, render
 - `function renderCalendarSettingsRows(calendars, prefs)` — HTML voor de dropdown-lijst
-- Menu-handler voor "Google Calendar" wijzigt: open modal i.p.v. `handleGoogleCalendarConnect()`. Verbinden zit dan in de modal.
+- Menu-handler voor "Google Calendar" wijzigt: `if (!googleAccessToken) handleGoogleCalendarConnect(); else openCalendarSettingsModal();`. Zero UX-verandering voor niet-verbonden users.
+- `handleGoogleCalendarDisconnect()` (aangeroepen vanuit modal-header link) triggert `calendarSettingsModal.hide()` na disconnect.
 
 ### Aangepast in `js/app.js`
 
