@@ -142,8 +142,9 @@ document.addEventListener('DOMContentLoaded', function() {
         localStorage.setItem('google_calendar_ever_connected', 'true');
     }
 
-    // Stille token-vernieuwing na page load (GIS script moet eerst klaar zijn)
-    window.addEventListener('load', initGoogleCalendarSilently);
+    // Stille token-vernieuwing wordt pas gestart NA Contactbeheer-login
+    // (in onAuthStateChange). Op page-load starten kan een Google-popup
+    // triggeren vóór de user Contactbeheer-login ziet.
 
     // Reconnect-prompt (getoond bij nieuwe afspraak zonder actieve verbinding)
     const reconnectBtn = document.getElementById('calendar-reconnect-btn');
@@ -3434,14 +3435,18 @@ function onAuthStateChange(isAuthenticated) {
     if (isAuthenticated) {
         // Hide auth modal
         authModal.hide();
-        
+
         // Show user info
         document.getElementById('user-email').textContent = currentUser.email;
         document.getElementById('user-info').style.display = 'inline-block';
-        
+
         // Load user's data from Supabase
         loadDataFromSupabase();
-        
+
+        // Stille Google Calendar-refresh: pas na Contactbeheer-login,
+        // zodat een eventuele Google-popup nooit vóór het app-loginscherm verschijnt.
+        initGoogleCalendarSilently();
+
     } else {
         // Clear data on logout
         contactsData = [];
