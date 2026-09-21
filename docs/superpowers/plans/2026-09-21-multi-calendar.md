@@ -221,11 +221,28 @@ const timed = (events || [])
 node --test 2>&1 | grep -E "^# tests|^# pass|^# fail"
 ```
 
-- [ ] **Step 5: Commit**
+- [ ] **Step 5: Update `renderWizardResults` template — emit `view-only` class**
+
+Zoek `js/app.js:975`:
+```js
+<div class="wizard-agenda-row ${it.isProposal ? 'proposal' : ''}">
+```
+
+Vervang met:
+```js
+<div class="wizard-agenda-row ${it.isProposal ? 'proposal' : ''}${it.isViewOnly ? ' view-only' : ''}">
+```
+
+Zonder deze template-update ontvangt de DOM nooit de `view-only` class en werkt de CSS uit Task 11 niet. Syntax-check:
+```bash
+node --check js/app.js
+```
+
+- [ ] **Step 6: Commit**
 
 ```bash
-git add js/lib.js test/slot-finder.test.js
-git commit -m "Feat(multi-calendar): bouwAgendaItems view-only prefix + isViewOnly tagging"
+git add js/lib.js js/app.js test/slot-finder.test.js
+git commit -m "Feat(multi-calendar): bouwAgendaItems view-only prefix + view-only class in renderer"
 ```
 
 ---
@@ -407,11 +424,11 @@ git commit -m "Feat(multi-calendar): getConfiguredCalendars getter met primary-f
 ## Task 7: `listCalendarEventsForDay` refactor — loop over configured calendars
 
 **Files:**
-- Modify: `js/app.js:2306-2360` (function `listCalendarEventsForDay`)
+- Modify: `js/app.js:2364-2430` (function `listCalendarEventsForDay`)
 
 - [ ] **Step 1: Vervang de body van `listCalendarEventsForDay`**
 
-Hele huidige functie (regel 2306 t/m rond 2360) vervangen door:
+Hele huidige functie (regel 2364 t/m rond 2430) vervangen door:
 
 ```js
 async function listCalendarEventsForDay(dateStr) {
@@ -515,11 +532,11 @@ git commit -m "Feat(multi-calendar): listCalendarEventsForDay loopt over configu
 ## Task 8: `checkGoogleAvailability` — zelfde multi-calendar patroon
 
 **Files:**
-- Modify: `js/app.js:2239-2298` (function `checkGoogleAvailability`)
+- Modify: `js/app.js:2315-2362` (function `checkGoogleAvailability`)
 
 - [ ] **Step 1: Vervang de fetch-body**
 
-De huidige functie fetcht van `/calendars/primary/events` op regel 2239. Refactor:
+De huidige functie fetcht van `/calendars/primary/events` binnen `checkGoogleAvailability` (start regel 2315). Refactor:
 - `await loadCalendarPrefs()` toevoegen
 - `getConfiguredCalendars()` gebruiken
 - Per calendar events ophalen (zelfde patroon als Task 7)
@@ -527,7 +544,7 @@ De huidige functie fetcht van `/calendars/primary/events` op regel 2239. Refacto
 
 De mini-view in de interaction-modal (buiten wizard-flow) laat gewoon alle geconfigureerde events zien. View-only styling wordt hier NIET toegepast — deze view is puur informatief en heeft geen "slot-blokkeert-vs-view-only" onderscheid nodig (gebruiker maakt hier direct een afspraak, geen slot-detectie).
 
-Vervang de fetch (rond regel 2239) door:
+Vervang de fetch (in body van `checkGoogleAvailability`, rond regel 2320-2330) door:
 ```js
 await loadCalendarPrefs();
 const configuredCals = getConfiguredCalendars();
@@ -701,9 +718,19 @@ function renderCalendarSettingsRows(body, calendarList) {
 
     body.querySelector('[data-action="disconnect"]').addEventListener('click', (e) => {
         e.preventDefault();
-        handleGoogleCalendarDisconnect();
+        disconnectGoogleCalendar();
         if (calendarSettingsModal) calendarSettingsModal.hide();
     });
+}
+
+// Nieuwe helper — er is nog geen dedicated disconnect-functie in app.js;
+// ontkoppelen was voorheen inline via setGoogleCalendarUI(false).
+// Deze wrapper centraliseert het + reset de prefs-cache.
+function disconnectGoogleCalendar() {
+    googleAccessToken = null;
+    calendarPrefsCache = null;
+    localStorage.removeItem('google_calendar_ever_connected');
+    setGoogleCalendarUI(false);
 }
 ```
 
@@ -778,43 +805,39 @@ git commit -m "Feat(multi-calendar): CSS voor view-only + calendar-settings-moda
 ## Task 12: Menu-handler switch — 1-click OAuth voor niet-verbonden, modal voor verbonden
 
 **Files:**
-- Modify: `js/app.js` — menu-handler voor Google Calendar (zoek `handleGoogleCalendarConnect` binding of menu-item wiring)
+- Modify: `js/app.js:129` — menu-handler wiring voor Google Calendar
 
-- [ ] **Step 1: Vind huidige menu-wiring**
+- [ ] **Step 1: Update de menu-handler**
 
-```bash
-grep -n "google-calendar\|GoogleCalendar\|handleGoogleCalendarConnect" js/app.js | head -20
-```
-
-- [ ] **Step 2: Wijzig de wiring**
-
-Zoek de plek waar het menu-item "Google Calendar" een click-handler heeft. Vervang de directe aanroep van `handleGoogleCalendarConnect` met:
-
+Zoek `js/app.js:129`:
 ```js
-// Menu-item "Google Calendar":
-// - Niet verbonden → start OAuth direct (bewaar 1-click UX)
-// - Verbonden → open Kalender-beheer modal
-if (!googleAccessToken) {
-    handleGoogleCalendarConnect();
-} else {
-    openCalendarSettingsModal();
-}
+document.getElementById('google-calendar-btn').addEventListener('click', () => connectGoogleCalendar());
 ```
 
-- [ ] **Step 3: Zorg dat `handleGoogleCalendarDisconnect` cache reset**
-
-Zoek `handleGoogleCalendarDisconnect` en voeg toe aan het eind:
+Vervang met:
 ```js
-calendarPrefsCache = null;  // volgende sessie/wizard-open fetcht opnieuw
+document.getElementById('google-calendar-btn').addEventListener('click', () => {
+    // Niet verbonden → start OAuth direct (bewaar 1-click UX).
+    // Verbonden → open Kalender-beheer modal.
+    if (!googleAccessToken) {
+        connectGoogleCalendar();
+    } else {
+        openCalendarSettingsModal();
+    }
+});
 ```
 
-- [ ] **Step 4: Syntax-check + tests**
+- [ ] **Step 2: Cache-reset op disconnect zit al in `disconnectGoogleCalendar()`**
+
+Die helper is toegevoegd in Task 10 en reset `calendarPrefsCache` al. Geen extra actie hier.
+
+- [ ] **Step 3: Syntax-check + tests**
 
 ```bash
 node --check js/app.js && node --test 2>&1 | grep -E "^# tests|^# pass|^# fail"
 ```
 
-- [ ] **Step 5: Commit**
+- [ ] **Step 4: Commit**
 
 ```bash
 git add js/app.js
