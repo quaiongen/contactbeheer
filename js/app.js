@@ -2420,13 +2420,24 @@ async function checkGoogleAvailability(dateStr) {
     try {
         const timeMin = encodeURIComponent(new Date(dateStr + 'T00:00:00').toISOString());
         const timeMax = encodeURIComponent(new Date(dateStr + 'T23:59:59').toISOString());
-        const res = await fetch(
-            `https://www.googleapis.com/calendar/v3/calendars/primary/events?timeMin=${timeMin}&timeMax=${timeMax}&singleEvents=true&orderBy=startTime`,
-            { headers: { Authorization: `Bearer ${googleAccessToken}` } }
-        );
-        if (!res.ok) throw new Error(`HTTP ${res.status}`);
-        const data = await res.json();
-        const events = (data.items || []).filter(ev => ev.status !== 'cancelled');
+
+        // Multi-calendar: loop over configured calendars in plaats van hardcoded primary.
+        await loadCalendarPrefs();
+        const configuredCals = getConfiguredCalendars();
+        const perCalendarResponses = await Promise.all(configuredCals.map(async (cal) => {
+            const url = `https://www.googleapis.com/calendar/v3/calendars/${encodeURIComponent(cal.calendarId)}/events?timeMin=${timeMin}&timeMax=${timeMax}&singleEvents=true&orderBy=startTime`;
+            try {
+                const r = await fetch(url, { headers: { Authorization: `Bearer ${googleAccessToken}` } });
+                if (r.status === 401) throw new Error('HTTP 401');
+                if (r.status === 404 || !r.ok) return [];
+                const d = await r.json();
+                return d.items || [];
+            } catch (err) {
+                if (err.message === 'HTTP 401') throw err;
+                return [];
+            }
+        }));
+        const events = perCalendarResponses.flat().filter(ev => ev.status !== 'cancelled');
 
         if (events.length === 0) {
             availEl.innerHTML = '<span class="text-success"><i class="bi bi-check-circle"></i> Niets gepland die dag</span>';
@@ -2481,52 +2492,69 @@ async function listCalendarEventsForDay(dateStr) {
 
     const timeMin = encodeURIComponent(localRfc3339(dateStr, '07:00'));
     const timeMax = encodeURIComponent(localRfc3339(dateStr, '23:00'));
-    const url = `https://www.googleapis.com/calendar/v3/calendars/primary/events?timeMin=${timeMin}&timeMax=${timeMax}&singleEvents=true&orderBy=startTime`;
 
-    try {
-        const res = await fetch(url, {
-            headers: { 'Authorization': `Bearer ${googleAccessToken}` }
-        });
-        // 401 = token verlopen. Clear zodat searchSlots in fallback-modus
-        // valt en de reconnect-prompt straks weer verschijnt (zelfde
-        // patroon als checkGoogleAvailability).
-        if (res.status === 401) googleAccessToken = null;
-        if (!res.ok) return [];
-        const data = await res.json();
-        const items = data.items || [];
+    // Multi-calendar: loop over configured calendars. Bij eerste call ook
+    // prefs uit Supabase laden (in-memory cache erna). Fallback bij lege
+    // prefs is [{calendarId:'primary', mode:'blocking'}] — matcht oud gedrag.
+    await loadCalendarPrefs();
+    const configuredCals = getConfiguredCalendars();
 
-        return items
-            .filter(ev => {
-                if (ev.status === 'cancelled') return false; // recurring-uitzonderingen
-                if (!ev.start) return false;
-                // Declined: kijk in ev.attendees waar self === true
-                if (ev.attendees && ev.attendees.some(a => a.self && a.responseStatus === 'declined')) return false;
-                // Transparent all-day events (bijv. verjaardagen) mag blijven — puur info.
-                // Transparent timed events (persoonlijke "vrij"-blokken) filteren.
-                if (ev.start.dateTime && ev.transparency === 'transparent') return false;
-                return true;
-            })
-            .map(ev => {
-                if (!ev.start.dateTime) {
-                    // All-day: informatie-only, blokkeert geen slot.
-                    return { allDay: true, title: ev.summary || '(geen titel)' };
-                }
-                const s = new Date(ev.start.dateTime);
-                const e = new Date(ev.end.dateTime);
-                const fmt = (d) => `${String(d.getHours()).padStart(2,'0')}:${String(d.getMinutes()).padStart(2,'0')}`;
-                return { start: fmt(s), end: fmt(e), title: ev.summary || '(geen titel)' };
-            })
-            .sort((a, b) => {
-                // All-day items eerst, daarna timed op start-tijd.
-                if (a.allDay && !b.allDay) return -1;
-                if (!a.allDay && b.allDay) return 1;
-                if (a.allDay && b.allDay) return 0;
-                return a.start.localeCompare(b.start);
-            });
-    } catch (err) {
-        console.warn('listCalendarEventsForDay faalde:', err);
-        return [];
-    }
+    const perCalendarResults = await Promise.all(configuredCals.map(async (cal) => {
+        const url = `https://www.googleapis.com/calendar/v3/calendars/${encodeURIComponent(cal.calendarId)}/events?timeMin=${timeMin}&timeMax=${timeMax}&singleEvents=true&orderBy=startTime`;
+        try {
+            const res = await fetch(url, { headers: { 'Authorization': `Bearer ${googleAccessToken}` } });
+            if (res.status === 401) { googleAccessToken = null; return []; }
+            if (res.status === 404) return []; // verdwenen calendar — stil skippen
+            if (!res.ok) return [];
+            const data = await res.json();
+            const items = data.items || [];
+            const isBlocking = cal.mode === 'blocking';
+            return items
+                .filter(ev => {
+                    if (ev.status === 'cancelled') return false;
+                    if (!ev.start) return false;
+                    if (ev.attendees && ev.attendees.some(a => a.self && a.responseStatus === 'declined')) return false;
+                    // Transparent timed events (persoonlijke "vrij"-blokken) filteren.
+                    // Transparent all-day (bijv. verjaardagen) mag blijven — puur info.
+                    if (ev.start.dateTime && ev.transparency === 'transparent') return false;
+                    return true;
+                })
+                .map(ev => {
+                    const meta = {
+                        calendarId: cal.calendarId,
+                        calendarSummary: cal.calendarSummary,
+                        isBlocking,
+                        isViewOnly: !isBlocking
+                    };
+                    if (!ev.start.dateTime) {
+                        return { ...meta, allDay: true, title: ev.summary || '(geen titel)' };
+                    }
+                    const s = new Date(ev.start.dateTime);
+                    const e = new Date(ev.end.dateTime);
+                    const fmt = (d) => `${String(d.getHours()).padStart(2,'0')}:${String(d.getMinutes()).padStart(2,'0')}`;
+                    return { ...meta, id: ev.id, start: fmt(s), end: fmt(e), title: ev.summary || '(geen titel)' };
+                });
+        } catch (err) {
+            console.warn(`listCalendarEventsForDay faalde voor ${cal.calendarId}:`, err);
+            return [];
+        }
+    }));
+
+    // Flatten, dedupe op event-id (alleen timed events hebben id), sorteer.
+    const flat = perCalendarResults.flat();
+    const seen = new Set();
+    const deduped = flat.filter(e => {
+        if (!e.id) return true;
+        if (seen.has(e.id)) return false;
+        seen.add(e.id);
+        return true;
+    });
+    return deduped.sort((a, b) => {
+        if (a.allDay && !b.allDay) return -1;
+        if (!a.allDay && b.allDay) return 1;
+        if (a.allDay && b.allDay) return 0;
+        return a.start.localeCompare(b.start);
+    });
 }
 
 /**
