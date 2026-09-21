@@ -2308,6 +2308,106 @@ function initGoogleCalendarSilently() {
     googleTokenClient.requestAccessToken({ prompt: '' });
 }
 
+// --- Multi-calendar helpers -----------------------------------------------
+// In-memory cache voor calendar-preferences. Gepopuleerd door
+// loadCalendarPrefs(), bijgewerkt door saveCalendarPref(), gereset door
+// disconnectGoogleCalendar() en logout.
+let calendarPrefsCache = null;
+
+// Haal de lijst calendars op waar user toegang tot heeft.
+// Retourneert array van {id, summary, accessRole, primary}.
+// Filtert hidden en deleted eruit.
+async function fetchCalendarList() {
+    if (!googleAccessToken) return [];
+    try {
+        const res = await fetch('https://www.googleapis.com/calendar/v3/users/me/calendarList', {
+            headers: { 'Authorization': `Bearer ${googleAccessToken}` }
+        });
+        if (res.status === 401) googleAccessToken = null;
+        if (!res.ok) return [];
+        const data = await res.json();
+        return (data.items || [])
+            .filter(cal => !cal.hidden && !cal.deleted)
+            .map(cal => ({
+                id: cal.id,
+                summary: cal.summaryOverride || cal.summary,
+                accessRole: cal.accessRole,
+                primary: !!cal.primary
+            }));
+    } catch (err) {
+        console.warn('fetchCalendarList faalde:', err);
+        return [];
+    }
+}
+
+// Retourneert array van {calendar_id, mode, calendar_summary}.
+// Eerste call: fetcht uit Supabase; daarna in-memory cache.
+async function loadCalendarPrefs() {
+    if (calendarPrefsCache !== null) return calendarPrefsCache;
+    if (!isSupabaseConfigured() || !currentUser) {
+        calendarPrefsCache = [];
+        return calendarPrefsCache;
+    }
+    const { data, error } = await supabaseClient
+        .from('user_calendar_preferences')
+        .select('calendar_id, mode, calendar_summary')
+        .eq('user_id', currentUser.id);
+    if (error) {
+        console.warn('loadCalendarPrefs faalde:', error);
+        calendarPrefsCache = [];
+        return calendarPrefsCache;
+    }
+    calendarPrefsCache = data || [];
+    return calendarPrefsCache;
+}
+
+// Upsert (mode = 'blocking' | 'view-only') of delete (mode = null) van een pref-rij.
+// Werkt ook de in-memory cache bij zodat volgende getConfiguredCalendars() vers is.
+async function saveCalendarPref(calendarId, mode, calendarSummary) {
+    if (!isSupabaseConfigured() || !currentUser) return;
+    if (mode === null) {
+        const { error } = await supabaseClient
+            .from('user_calendar_preferences')
+            .delete()
+            .eq('user_id', currentUser.id)
+            .eq('calendar_id', calendarId);
+        if (error) { console.warn('saveCalendarPref delete faalde:', error); return; }
+        if (calendarPrefsCache) {
+            calendarPrefsCache = calendarPrefsCache.filter(p => p.calendar_id !== calendarId);
+        }
+    } else {
+        const { error } = await supabaseClient
+            .from('user_calendar_preferences')
+            .upsert({
+                user_id: currentUser.id,
+                calendar_id: calendarId,
+                mode,
+                calendar_summary: calendarSummary
+            });
+        if (error) { console.warn('saveCalendarPref upsert faalde:', error); return; }
+        if (calendarPrefsCache) {
+            const idx = calendarPrefsCache.findIndex(p => p.calendar_id === calendarId);
+            const row = { calendar_id: calendarId, mode, calendar_summary: calendarSummary };
+            if (idx >= 0) calendarPrefsCache[idx] = row; else calendarPrefsCache.push(row);
+        }
+    }
+}
+
+// Retourneert de calendars die actief zijn voor read-operations (blocking of view-only).
+// Sync — leest uit cache. Roep loadCalendarPrefs() aan voor eerste populatie.
+// Fallback bij lege prefs: [{calendarId:'primary', mode:'blocking'}] — matcht oud gedrag.
+function getConfiguredCalendars() {
+    const prefs = calendarPrefsCache || [];
+    if (prefs.length === 0) {
+        return [{ calendarId: 'primary', mode: 'blocking', calendarSummary: null }];
+    }
+    return prefs.map(p => ({
+        calendarId: p.calendar_id,
+        mode: p.mode,
+        calendarSummary: p.calendar_summary
+    }));
+}
+
 /**
  * Haal bezette tijdsloten op voor een datum via FreeBusy API
  * @param {string} dateStr - Datum in YYYY-MM-DD formaat
