@@ -1854,13 +1854,21 @@ function showInteractionModal(contactId, interactionId = null, prefill = null) {
  * Save interaction data from the form
  */
 async function saveInteraction() {
+    // Guard tegen dubbelklik: als de save-knop al actief is, negeer.
+    if (saveInteractionBtn.disabled) return;
+
     // Validate form
     const interactionForm = document.getElementById('interaction-form');
     if (!interactionForm.checkValidity()) {
         interactionForm.reportValidity();
         return;
     }
-    
+
+    // Vergrendel knop tijdens async-flow (Google Calendar create + Supabase insert).
+    saveInteractionBtn.disabled = true;
+    const originalBtnText = saveInteractionBtn.textContent;
+    saveInteractionBtn.textContent = 'Opslaan…';
+
     // Get form values
     const contactId = document.getElementById('interaction-contact-id').value;
     const interactionId = document.getElementById('interaction-id').value;
@@ -2019,6 +2027,9 @@ async function saveInteraction() {
     } catch (error) {
         console.error('Error saving interaction:', error);
         alert('Fout bij opslaan van interactie: ' + error.message);
+    } finally {
+        saveInteractionBtn.disabled = false;
+        saveInteractionBtn.textContent = originalBtnText;
     }
 }
 
