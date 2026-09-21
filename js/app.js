@@ -2309,6 +2309,9 @@ function connectGoogleCalendar(onSuccess, onFailure) {
                 return;
             }
             googleAccessToken = response.access_token;
+            // Guard tegen silent-refresh-loop: markeer dat we net verbonden zijn.
+            // initGoogleCalendarSilently skipt binnen 60 sec na deze flag.
+            sessionStorage.setItem('google_recent_connect', String(Date.now()));
             // Sla toestemming op voor 60 dagen
             localStorage.setItem('google_consent_granted', String(Date.now() + GOOGLE_CONSENT_EXPIRY_MS));
             // Markeer dat deze browser ooit verbonden is geweest — daarna
@@ -2336,6 +2339,15 @@ function connectGoogleCalendar(onSuccess, onFailure) {
  * Geen popup — de gebruiker merkt hier niets van.
  */
 function initGoogleCalendarSilently() {
+    // Guard: net verbonden via explicit connect? Skip silent-refresh om loop te
+    // voorkomen (op iOS private mode kan redirect-based OAuth een tab-reload
+    // triggeren die anders silent-refresh direct weer aftrapt).
+    const recent = sessionStorage.getItem('google_recent_connect');
+    if (recent && Date.now() - parseInt(recent, 10) < 60_000) return;
+
+    // Token al in memory? Geen refresh nodig.
+    if (googleAccessToken) return;
+
     const stored = localStorage.getItem('google_consent_granted');
     if (!stored) return;
     const expiry = parseInt(stored, 10);
