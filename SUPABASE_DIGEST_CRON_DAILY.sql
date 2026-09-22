@@ -15,16 +15,31 @@
 -- SELECT jobid, jobname, schedule FROM cron.job;
 
 -- ── Omzetten ────────────────────────────────────────────────────────────
--- Verwijdert elke bestaande weekly-digest-job (zowel 'weekly-digest' als
--- de test-variant 'weekly-digest-test') en zet er één dagelijkse job neer.
+-- Matcht op de INHOUD van het commando, niet op de jobnaam. De bestaande
+-- job kan 'weekly-digest', 'weekly-digest-test' of iets anders heten —
+-- CLAUDE.md noemt de function ook 'dynamic-responder'. Matchen op naam zou
+-- de oude job kunnen laten staan, en dan draaien er twee jobs naast elkaar:
+-- dubbele mail op de oude dag.
+--
+-- Elke weekly-digest-cron verwijst naar de vault-secret `weekly_digest_url`.
+-- Dat is het betrouwbare kenmerk.
 DO $$
 DECLARE
     j RECORD;
+    n INT := 0;
 BEGIN
-    FOR j IN SELECT jobname FROM cron.job WHERE jobname LIKE 'weekly-digest%' LOOP
+    FOR j IN
+        SELECT jobname FROM cron.job
+        WHERE command LIKE '%weekly_digest_url%'
+           OR jobname LIKE 'weekly-digest%'
+    LOOP
         PERFORM cron.unschedule(j.jobname);
         RAISE NOTICE 'cron-job verwijderd: %', j.jobname;
+        n := n + 1;
     END LOOP;
+    IF n = 0 THEN
+        RAISE NOTICE 'Geen bestaande weekly-digest-job gevonden. Controleer met SELECT jobname, command FROM cron.job; of er niet een job onder een andere naam loopt.';
+    END IF;
 END $$;
 
 SELECT cron.schedule(
@@ -44,5 +59,6 @@ SELECT cron.schedule(
 );
 
 -- ── Verificatie ─────────────────────────────────────────────────────────
--- SELECT jobid, jobname, schedule FROM cron.job WHERE jobname = 'weekly-digest';
---   → verwacht: schedule = '0 8 * * *', precies één rij.
+-- SELECT jobid, jobname, schedule FROM cron.job WHERE command LIKE '%weekly_digest_url%';
+--   → verwacht: PRECIES ÉÉN rij, schedule = '0 8 * * *'.
+--   Twee rijen betekent dat de oude job nog leeft en je dubbele mail krijgt.
