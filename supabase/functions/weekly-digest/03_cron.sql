@@ -3,17 +3,23 @@
 -- Roept de Edge Function `weekly-digest` aan via pg_cron + pg_net.
 -- Vereist dat de function al gedeployed is (stap 2 + 3).
 --
+-- ── Dagelijks, niet wekelijks ──────────────────────────────────────────
+-- Sinds de abonneren-flow kiest elke gebruiker zelf zijn dag
+-- (`user_settings.digest_dag`). De cron vuurt daarom ELKE dag; de Edge
+-- Function bepaalt per gebruiker of vandaag zijn dag is. Een wekelijkse
+-- cron zou `digest_dag` dode configuratie maken.
+--
 -- ── Tijdzone-keuze ─────────────────────────────────────────────────────
 -- pg_cron werkt in UTC. Nederland heeft twee zones:
---   Winter (CET,  UTC+1): 09:00 lokaal = 08:00 UTC → `0 8 * * 1`
---   Zomer  (CEST, UTC+2): 09:00 lokaal = 07:00 UTC → `0 7 * * 1`
+--   Winter (CET,  UTC+1): 09:00 lokaal = 08:00 UTC → `0 8 * * *`
+--   Zomer  (CEST, UTC+2): 09:00 lokaal = 07:00 UTC → `0 7 * * *`
 -- We kiezen ÉÉN vast schema en accepteren dat de andere helft van het
 -- jaar de mail een uur verschuift. Bewuste keuze: geen slimme omschakeling
 -- inbouwen, dat is meer risico dan het waard is.
 --
--- Standaard hieronder: `0 8 * * 1` (winter). In de zomer valt de mail dan
+-- Standaard hieronder: `0 8 * * *` (winter). In de zomer valt de mail dan
 -- op 10:00 lokaal. Als je liever de zomer-tijd exact hebt (mei-oktober),
--- vervang door `0 7 * * 1` — dan valt hij in winter op 08:00 lokaal.
+-- vervang door `0 7 * * *` — dan valt hij in winter op 08:00 lokaal.
 --
 -- ── Volgorde van uitvoering ────────────────────────────────────────────
 -- 1. `01_view.sql` gedraaid  (view aangemaakt)
@@ -75,14 +81,14 @@ SELECT cron.schedule(
 
 -- ────────────────────────────────────────────────────────────────────────
 -- PRODUCTIE — pas RUNNEN als de test-cron minstens één mail heeft verstuurd
--- en je die hebt ontvangen. Verwijdert de test-job en zet 'em op maandag.
+-- en je die hebt ontvangen. Verwijdert de test-job en zet 'em op dagelijks.
 -- ────────────────────────────────────────────────────────────────────────
 
 -- SELECT cron.unschedule('weekly-digest-test');
 --
 -- SELECT cron.schedule(
 --     'weekly-digest',
---     '0 8 * * 1',                     -- maandag 08:00 UTC = 09:00 NL (winter) / 10:00 NL (zomer)
+--     '0 8 * * *',                     -- elke dag 08:00 UTC = 09:00 NL (winter) / 10:00 NL (zomer)
 --     $$
 --     SELECT net.http_post(
 --         url := (SELECT decrypted_secret FROM vault.decrypted_secrets WHERE name = 'weekly_digest_url'),

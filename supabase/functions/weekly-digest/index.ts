@@ -1,12 +1,18 @@
 // Supabase Edge Function: weekly-digest
 //
 // Doel: bouwt de wekelijkse herinneringsmail per gebruiker op basis van
-// de view `weekly_digest_v` en verstuurt via Resend. Idempotency +
-// filter op abonnement komt in stap 5.
+// de view `weekly_digest_v` en verstuurt via Resend. Idempotency komt later.
+//
+// Abonnement: een gebruiker krijgt alleen mail als `user_settings` een rij
+// heeft met `digest_enabled = true` én `digest_dag` gelijk aan vandaag.
+// Geen rij = niet geabonneerd. De cron vuurt daarom dagelijks in plaats van
+// alleen op maandag; zie `03_cron.sql`.
 //
 // Query-params:
 //   ?dryRun=true            → response = HTML van de mail (text/html).
 //                             Geen verzending. VEREIST ook een userId.
+//                             Slaat het abonnement-filter over, zodat je
+//                             de mail kunt bekijken op een willekeurige dag.
 //   ?userId=<uuid>          → filter op één gebruiker. Verplicht bij dryRun,
 //                             sterk aanbevolen bij eerste live-tests.
 //   ?forceTo=<email>        → overschrijft de ontvanger (test-modus).
@@ -197,7 +203,7 @@ function renderHtml(
             </td>
           </tr>
         </table>
-        <p style="font-size:11px;color:#8A93A0;margin:12px 0 0;">Je krijgt deze mail omdat je de weekmail hebt aangezet. Uitzetten kan in de app.</p>
+        <p style="font-size:11px;color:#8A93A0;margin:12px 0 0;">Je krijgt deze mail omdat je de weekmail hebt aangezet. <a href="${APP_URL}/#instellingen" style="color:#8A93A0;text-decoration:underline;">Uitschrijven of een andere dag kiezen</a>.</p>
       </td>
     </tr>
   </table>
@@ -238,7 +244,8 @@ ${rows}${restLine}
 Openen: ${APP_URL}/#vandaag${footerLine}
 
 --
-Je krijgt deze mail omdat je de weekmail hebt aangezet. Uitzetten kan in de app.
+Je krijgt deze mail omdat je de weekmail hebt aangezet.
+Uitschrijven of een andere dag kiezen: ${APP_URL}/#instellingen
 `;
 }
 
@@ -267,6 +274,44 @@ async function sendViaResend(
     } catch (err) {
         return { ok: false, error: `Resend fetch faalde: ${String(err)}` };
     }
+}
+
+interface UserSettingsRow {
+    user_id: string;
+    digest_enabled: boolean;
+    digest_dag: number;
+}
+
+// Haalt alle abonnement-rijen op in één query. Service_role bypasst RLS,
+// dus dit levert elke gebruiker — ook die zonder rij ontbreken hier, en
+// dat is precies de bedoeling: geen rij = niet geabonneerd.
+async function loadUserSettings(
+    supabase: ReturnType<typeof createClient>,
+    userIdFilter: string | null
+): Promise<Map<string, UserSettingsRow>> {
+    let query = supabase.from('user_settings').select('user_id, digest_enabled, digest_dag');
+    if (userIdFilter) query = query.eq('user_id', userIdFilter);
+    const { data, error } = await query;
+    if (error) throw new Error(`user_settings lezen faalde: ${error.message}`);
+    const map = new Map<string, UserSettingsRow>();
+    for (const row of ((data ?? []) as UserSettingsRow[])) {
+        map.set(row.user_id, row);
+    }
+    return map;
+}
+
+// Zelfde regel als `moetDigestVandaag` in js/lib.js — bewuste duplicatie,
+// net als de bucket-logica in 01_view.sql. Deze function is een eigen
+// deploy-eenheid en kan lib.js niet importeren. Wijzig je hier iets, wijzig
+// het daar ook (test/digest-settings.test.js dekt de JS-kant).
+function moetDigestVandaag(settings: UserSettingsRow | undefined, vandaagDow: number): boolean {
+    if (!settings || settings.digest_enabled !== true) return false;
+    if (!Number.isInteger(vandaagDow) || vandaagDow < 0 || vandaagDow > 6) return false;
+    const dag = settings.digest_dag === undefined || settings.digest_dag === null
+        ? 1
+        : Number(settings.digest_dag);
+    if (!Number.isInteger(dag) || dag < 0 || dag > 6) return false;
+    return dag === vandaagDow;
 }
 
 async function getUserEmail(
@@ -352,7 +397,29 @@ Deno.serve(async (req) => {
             error?: string;
         }> = [];
 
+        // Abonnement-filter. De cron vuurt dagelijks; per gebruiker bepaalt
+        // `digest_dag` of vandaag zijn dag is.
+        //
+        // Dag in UTC. De cron staat op 08:00 UTC, wat in Nederland 09:00 of
+        // 10:00 lokaal is — dezelfde kalenderdag. Zolang de cron ruim binnen
+        // de dag valt is UTC dus veilig en hoeven we geen tijdzone-conversie
+        // te doen. Verschuif je de cron naar de late avond, heroverweeg dit.
+        const settingsMap = await loadUserSettings(supabase, userIdFilter);
+        const vandaagDow = new Date().getUTCDay();
+
         for (const [uid, contacts] of byUser.entries()) {
+            if (!moetDigestVandaag(settingsMap.get(uid), vandaagDow)) {
+                const s = settingsMap.get(uid);
+                results.push({
+                    user_id: uid,
+                    skipped: !s
+                        ? 'geen user_settings-rij (niet geabonneerd)'
+                        : s.digest_enabled !== true
+                            ? 'digest_enabled = false'
+                            : `andere dag (digest_dag=${s.digest_dag}, vandaag=${vandaagDow})`
+                });
+                continue;
+            }
             const digest = buildDigest(contacts);
             if (!digest) {
                 results.push({ user_id: uid, skipped: 'geen contacten in nu_afspraak_maken' });
