@@ -14,6 +14,7 @@ Scope: infra-verify voor de swarm-setup zelf (niet een product-feature). Gebruik
 | 2026-09-22T12:35Z | Orchestrator | Fase 2 dispatch-check retry 3 (Agent-tool aanwezig) | claude-opus-5 | ~16000 | ~900 | ~0.30 |
 | 2026-09-22T12:35Z | general-purpose | Fase 2 dispatch-primitive-verify (echo-prompt, NIET echo-worker) | claude-haiku-4.5 | 12219 | ~60 | ~0.01 |
 | 2026-09-22T12:36Z | Orchestrator | Fase 2 clean retry `subagent_type=echo-worker` (faalde: not found) + cost-log correctie | claude-opus-5 | ~22000 | ~1200 | ~0.40 |
+| 2026-09-22T12:38Z | Orchestrator | push origin main (7 commits) + core-memory correctie na owner-✓ | claude-opus-5 | ~28000 | ~1500 | ~0.50 |
 
 ## Openstaand
 
