@@ -1187,6 +1187,8 @@ header h1.h5 {
 }
 .save-indicator.visible { opacity: 1; }
 .save-indicator.saving { color: #6C757D; animation: spin 1s linear infinite; }
+/* Mislukt opslaan moet niet in het groen van 'gelukt' staan. */
+.save-indicator.failed { color: #DC3545; }
 @keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
 
 .wizard-empty {

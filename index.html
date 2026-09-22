@@ -7,7 +7,7 @@
     <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><rect width='100' height='100' rx='20' fill='%232563eb'/><circle cx='50' cy='38' r='16' fill='white'/><path d='M20 88a30 30 0 0 1 60 0z' fill='white'/></svg>">
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.10.0/font/bootstrap-icons.css">
-    <link rel="stylesheet" href="css/styles.css?v=20260921d">
+    <link rel="stylesheet" href="css/styles.css?v=20260922a">
 </head>
 <body>
     <div class="container-fluid px-2 px-sm-3">
@@ -22,6 +22,7 @@
                     <li><hr class="dropdown-divider"></li>
                     <li><button class="dropdown-item" id="google-calendar-btn" type="button" title="Google Calendar koppelen"><i class="bi bi-calendar-check me-2"></i><span id="google-calendar-status">Google Calendar</span></button></li>
                     <li><button class="dropdown-item" id="manage-categories-btn" type="button"><i class="bi bi-tags me-2"></i>Categorieën</button></li>
+                    <li><button class="dropdown-item" id="user-settings-btn" type="button"><i class="bi bi-gear me-2"></i>Instellingen</button></li>
                     <li><button class="dropdown-item" id="import-data-btn" type="button"><i class="bi bi-upload me-2"></i>Importeren</button></li>
                     <li><button class="dropdown-item" id="export-data-btn" type="button"><i class="bi bi-download me-2"></i>Exporteren</button></li>
                     <li><hr class="dropdown-divider"></li>
@@ -337,6 +338,21 @@
             </div>
         </div>
 
+        <!-- Instellingen: weekmail-abonnement (opt-in + dag) -->
+        <div class="modal fade" id="user-settings-modal" tabindex="-1" aria-hidden="true" aria-label="Instellingen">
+            <div class="modal-dialog">
+                <div class="modal-content">
+                    <div class="modal-header">
+                        <h5 class="modal-title">Instellingen</h5>
+                        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Sluiten"></button>
+                    </div>
+                    <div class="modal-body" id="user-settings-body">
+                        <!-- Filled dynamically by openUserSettingsModal() -->
+                    </div>
+                </div>
+            </div>
+        </div>
+
         <!-- Log Interaction Modal -->
         <div class="modal fade" id="interaction-modal" tabindex="-1" aria-hidden="true">
             <div class="modal-dialog">
@@ -486,7 +502,7 @@
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.49.4"></script>
     <script src="https://accounts.google.com/gsi/client" async defer></script>
     <script src="js/supabase-config.js"></script>
-    <script src="js/lib.js?v=20260916f"></script>
-    <script src="js/app.js"></script>
+    <script src="js/lib.js?v=20260922a"></script>
+    <script src="js/app.js?v=20260922a"></script>
 </body>
 </html>

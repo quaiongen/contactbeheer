@@ -125,6 +125,11 @@ document.addEventListener('DOMContentLoaded', function() {
         }
     });
 
+    // Instellingen button
+    document.getElementById('user-settings-btn').addEventListener('click', () => {
+        openUserSettingsModal();
+    });
+
     // Google Calendar button
     document.getElementById('google-calendar-btn').addEventListener('click', () => {
         // Niet verbonden → start OAuth direct (bewaar 1-click UX voor nieuwe users).
@@ -2587,6 +2592,139 @@ function renderCalendarSettingsRows(body, calendarList) {
     });
 }
 
+// --- Instellingen: weekmail-abonnement ---------------------------------
+//
+// De weekmail is opt-in. Geen rij in `user_settings` betekent niet
+// geabonneerd — dezelfde default die de Edge Function aanhoudt. Zet de
+// gebruiker de mail aan, dan schrijven we een rij.
+
+let userSettingsModal = null;
+let userSettingsCache = null;
+
+// Leest de eigen rij. `null` = geen rij, dus niet geabonneerd. Bij een
+// leesfout ook null, maar dan blijft `userSettingsCache` ongemoeid zodat
+// de laatst bekende waarde bewaard blijft voor de rollback in persist().
+//
+// Geen read-cache: de modal gaat zelden open en een verse lezing voorkomt
+// dat een wijziging in een ander tabblad hier verouderd blijft staan.
+async function loadUserSettings() {
+    if (!isSupabaseConfigured() || !currentUser) return null;
+    const { data, error } = await supabaseClient
+        .from('user_settings')
+        .select('digest_enabled, digest_dag')
+        .eq('user_id', currentUser.id)
+        .maybeSingle();
+    if (error) {
+        console.warn('loadUserSettings faalde:', error);
+        return null;
+    }
+    userSettingsCache = data || null;
+    return userSettingsCache;
+}
+
+// Upsert van de eigen rij. Retourneert true bij succes zodat de UI
+// onderscheid kan maken tussen opgeslagen en mislukt.
+async function saveUserSettings(digestEnabled, digestDag) {
+    if (!isSupabaseConfigured() || !currentUser) return false;
+    const row = {
+        user_id: currentUser.id,
+        digest_enabled: digestEnabled,
+        digest_dag: digestDag,
+        updated_at: new Date().toISOString()
+    };
+    const { error } = await supabaseClient.from('user_settings').upsert(row);
+    if (error) {
+        console.warn('saveUserSettings faalde:', error);
+        return false;
+    }
+    userSettingsCache = { digest_enabled: digestEnabled, digest_dag: digestDag };
+    return true;
+}
+
+async function openUserSettingsModal() {
+    const el = document.getElementById('user-settings-modal');
+    if (!el) return;
+    if (!userSettingsModal) userSettingsModal = new bootstrap.Modal(el);
+
+    const body = document.getElementById('user-settings-body');
+    body.innerHTML = '<p class="text-muted">Instellingen laden…</p>';
+    userSettingsModal.show();
+
+    if (!isSupabaseConfigured() || !currentUser) {
+        body.innerHTML = '<p class="text-danger">Log in om je instellingen te beheren.</p>';
+        return;
+    }
+
+    const settings = await loadUserSettings();
+    renderUserSettingsBody(body, settings);
+}
+
+function renderUserSettingsBody(body, settings) {
+    const enabled = settings ? settings.digest_enabled === true : false;
+    // Geen rij → toon de kolom-default (maandag) als voorselectie.
+    const dag = settings && settings.digest_dag !== null && settings.digest_dag !== undefined
+        ? Number(settings.digest_dag)
+        : 1;
+
+    const dagOpties = DIGEST_DAG_NAMEN.map((naam, i) => {
+        const label = naam.charAt(0).toUpperCase() + naam.slice(1);
+        return `<option value="${i}" ${i === dag ? 'selected' : ''}>${label}</option>`;
+    }).join('');
+
+    body.innerHTML = `
+        <h6 class="mb-2">Wekelijkse herinneringsmail</h6>
+        <p class="text-muted small mb-3">
+            Een overzicht van contacten waar je te lang geen contact mee hebt gehad.
+            Je krijgt alleen mail als er daadwerkelijk contacten open staan.
+        </p>
+        <div class="form-check form-switch mb-3">
+            <input class="form-check-input" type="checkbox" role="switch"
+                   id="digest-enabled-toggle" ${enabled ? 'checked' : ''}>
+            <label class="form-check-label" for="digest-enabled-toggle">Weekmail ontvangen</label>
+            <span class="save-indicator" aria-live="polite"></span>
+        </div>
+        <div class="mb-1" id="digest-dag-wrap" style="${enabled ? '' : 'display:none;'}">
+            <label for="digest-dag-select" class="form-label small">Op welke dag?</label>
+            <select class="form-select form-select-sm" id="digest-dag-select" style="max-width:12rem;">
+                ${dagOpties}
+            </select>
+        </div>
+        <p class="text-muted small mb-0 mt-3">
+            Mail gaat naar ${escapeHtml(currentUser.email || 'je account-adres')}.
+        </p>
+    `;
+
+    const toggle = body.querySelector('#digest-enabled-toggle');
+    const select = body.querySelector('#digest-dag-select');
+    const wrap = body.querySelector('#digest-dag-wrap');
+    const indicator = body.querySelector('.save-indicator');
+
+    async function persist() {
+        indicator.textContent = '⟳';
+        indicator.classList.add('visible', 'saving');
+        const ok = await saveUserSettings(toggle.checked, Number(select.value));
+        indicator.textContent = ok ? '✓' : '✕';
+        indicator.classList.remove('saving');
+        indicator.classList.toggle('failed', !ok);
+        if (!ok) {
+            // Mislukt opslaan mag niet als gelukt overkomen: draai de
+            // schakelaar terug naar de laatst bekende waarde.
+            const known = userSettingsCache;
+            toggle.checked = known ? known.digest_enabled === true : false;
+            wrap.style.display = toggle.checked ? '' : 'none';
+            indicator.classList.add('visible');
+            return;
+        }
+        setTimeout(() => indicator.classList.remove('visible'), 1500);
+    }
+
+    toggle.addEventListener('change', () => {
+        wrap.style.display = toggle.checked ? '' : 'none';
+        persist();
+    });
+    select.addEventListener('change', persist);
+}
+
 /**
  * Haal bezette tijdsloten op voor een datum via FreeBusy API
  * @param {string} dateStr - Datum in YYYY-MM-DD formaat
@@ -3458,6 +3596,19 @@ function onAuthStateChange(isAuthenticated) {
         // Stille Google Calendar-refresh: pas na Contactbeheer-login,
         // zodat een eventuele Google-popup nooit vóór het app-loginscherm verschijnt.
         initGoogleCalendarSilently();
+
+        // Uitschrijflink uit de weekmail: #instellingen opent de modal.
+        // Pas hier, niet op DOMContentLoaded — vóór login is `currentUser`
+        // leeg en zou de modal "log in om je instellingen te beheren" tonen.
+        // De hash wordt daarna gewist zodat een refresh of een tweede
+        // auth-event de modal niet opnieuw opent.
+        //
+        // Alleen deze hash heeft een handler; #vandaag en #contact= uit
+        // dezelfde mail hebben er (nog) geen.
+        if (window.location.hash === '#instellingen') {
+            history.replaceState(null, '', window.location.pathname + window.location.search);
+            openUserSettingsModal();
+        }
 
     } else {
         // Clear data on logout
