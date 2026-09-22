@@ -134,6 +134,41 @@ Visualiseren is een expliciet onderdeel van de design-fase — niet optioneel vo
 - ASCII-schets in de thread
 - Verwijzing naar bestaande UI + screenshot van de huidige stand
 
+## Cost tracking
+
+Hybride aanpak: provider-dashboards = ground truth op totaal-niveau, per-feature logboek = schatting op feature-niveau, maandelijkse reconciliatie corrigeert de schattingen.
+
+**Per-feature logboek**
+- Locatie: `docs/superpowers/costs/YYYY-MM-DD-<featurename>.md` in de repo
+- Structuur: één regel per fase-completion, ondertekend door de agent die de fase afsloot
+- Formaat:
+  ```
+  | timestamp | agent | fase | model | tokens_in | tokens_out | est_usd |
+  ```
+- Aan het eind van elke feature (na push) voegt Orchestrator een `Totaal:`-regel onderaan
+- Bestand wordt gecommit als onderdeel van de laatste commit van de feature
+
+**Wie schrijft wat**
+- Elke agent na afsluiting van zijn fase: 1 regel toevoegen (Orchestrator ook)
+- Subagents (Claude Code): parent (Orchestrator) leest de `<usage>`-block uit hun completion, schrijft de regel namens hen
+- Buzz-managed agents (zichtbaar): schrijven zelf hun regel als hun harness token-usage exposeert; anders "geschat" op basis van bericht-lengte en model-prijs
+- Waar geen precieze meting mogelijk is: schatting duidelijk markeren met `~` prefix
+
+**Provider-dashboard koppeling**
+- Elke zichtbare Buzz-agent draait op een eigen API-key bij zijn provider (bij eerste config: aparte key aanmaken)
+- Anthropic Console / OpenAI Dashboard = maandelijkse ground truth per agent
+
+**Maandelijkse reconciliatie** *(low-effort ritueel)*
+- Op de 1e van de maand: user leest per agent de vorige maand op provider-dashboard
+- Aggregeert alle `docs/superpowers/costs/*.md`-totalen van diezelfde maand
+- Verhouding "provider ÷ logboek" is de correctiefactor voor de volgende maand
+- Correctiefactor > 1.2 of < 0.8 = signaal dat schattingen scheef staan → agents recalibreren
+
+**Wat hier NIET in zit**
+- Real-time budget-alerts per feature (bewuste keuze — te veel infrastructuur voor solo-dev; later mogelijk)
+- Automatische stop bij overschrijding (idem)
+- Kosten voor niet-token-gebaseerde onderdelen (Buzz-relay, Blossom-storage, GitHub-Actions — verwaarloosbaar in deze setup)
+
 ## Foutafhandeling
 
 - **Agent-crash / provider-timeout mid-taak** — Orchestrator pauzeert de thread en post een "gefaald op X, retry?"-melding voor user. Geen automatische retry.
@@ -182,7 +217,8 @@ Visualiseren is een expliciet onderdeel van de design-fase — niet optioneel vo
 
 **Fase 4c — Admin (Notion-keeper + Deploy-wachter)**
 - Subagent-definities toevoegen
-- **Milestone:** Feature-afronding inclusief backlog-fase-update en cache-buster-bump loopt zonder handmatige tussenstappen (behoudens de gates)
+- Cost-logboek-template + Orchestrator-instructie om per fase een regel te schrijven activeren
+- **Milestone:** Feature-afronding inclusief backlog-fase-update, cache-buster-bump én afgesloten cost-log loopt zonder handmatige tussenstappen (behoudens de gates)
 
 **Fase 5 — Iteratie**
 - Frictie-punten verzamelen tijdens pilot
@@ -211,7 +247,7 @@ De opzet is succesvol als:
 | Verborgen uitvoerders maken keuzes die je niet ziet | Code-reviewer krijgt expliciete opdracht om architectuur-afwijkingen te melden |
 | Agent-configs zijn owner-reviewed → drempel per wijziging | Accepteer dit — het is een feature, niet een bug |
 | Orchestrator loopt vast tussen sessies | Persistente state via `buzz mem set` per agent (core memory) |
-| Kosten lopen op | Later per-agent cost tracking via provider dashboards; nu geen automatisering |
+| Kosten lopen op | Cost-tracking (zie *Cost tracking*-sectie): per-feature logboek + provider-dashboards + maandelijkse reconciliatie |
 | CLAUDE.md verandert, agents niet | Fase 5 bevat een expliciete sync-stap; toekomstige uitbreiding: Orchestrator leest CLAUDE.md bij session start |
 
 ## Open beslissingen (voor implementation plan)
