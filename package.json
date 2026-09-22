@@ -3,6 +3,6 @@
   "private": true,
   "description": "Persoonlijke contactbeheer-app — vanilla JS, Bootstrap 5, Supabase.",
   "scripts": {
-    "test": "node --test test/"
+    "test": "node --test"
   }
 }
