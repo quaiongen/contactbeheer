@@ -29,11 +29,23 @@ CREATE POLICY "user_settings_own" ON user_settings
 -- deze backfill zou hun mail stil stoppen bij het uitrollen van de feature.
 -- Daarom: bestaande accounts op true, nieuwe accounts op de default false.
 --
--- ON CONFLICT DO NOTHING maakt dit idempotent — meerdere keren runnen is
--- veilig en overschrijft geen keuze die een gebruiker daarna zelf maakt.
+-- ON CONFLICT DO NOTHING beschermt alleen rijen die AL bestaan. Zonder de
+-- datumgrens hieronder zou een tweede run (dev → prod, of een herhaalde
+-- setup) elk account dat zich ná de eerste run registreerde alsnog op true
+-- zetten — precies het tegenovergestelde van de opt-in. De grens is het
+-- uitrolmoment en staat daarom hard in het script.
+--
+-- Uitgesloten:
+--   deleted_at IS NOT NULL       → soft-deleted accounts
+--   email_confirmed_at IS NULL   → nooit geverifieerd mailadres. Die
+--                                  abonneren zou mail sturen naar een adres
+--                                  dat niemand heeft bevestigd.
 INSERT INTO user_settings (user_id, digest_enabled, digest_dag)
 SELECT id, true, 1
 FROM auth.users
+WHERE created_at < TIMESTAMPTZ '2026-09-22 00:00:00+00'
+  AND deleted_at IS NULL
+  AND email_confirmed_at IS NOT NULL
 ON CONFLICT (user_id) DO NOTHING;
 
 COMMENT ON TABLE user_settings IS

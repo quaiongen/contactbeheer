@@ -219,16 +219,28 @@ SELECT vault.update_secret(
 );
 ```
 
+**Test op een willekeurige dag:** sinds de abonneren-flow filtert de function op
+`digest_dag`. Een live test met alleen `forceTo` faalt daarom stil met
+`skipped: andere dag` op zes van de zeven dagen. Voeg `&ignoreSchedule=true` toe
+om `digest_dag` te negeren; `digest_enabled` blijft wél gerespecteerd.
+
 ### 3.4 Test-cron uit, productie-cron aan
 
 **Alleen doen zodra 3.3 groen is.**
+
+> **Sinds de abonneren-flow:** gebruik `SUPABASE_DIGEST_CRON_DAILY.sql` uit de
+> repo-root in plaats van het statement hieronder. Dat script verwijdert
+> bestaande jobs op basis van hun commando (betrouwbaarder dan op naam) en zet
+> het dagelijkse schema neer. Draai eerst `SUPABASE_USER_SETTINGS.sql` en
+> deploy dan de function — zonder de tabel `user_settings` faalt de function
+> met HTTP 500.
 
 ```sql
 SELECT cron.unschedule('weekly-digest-test');
 
 SELECT cron.schedule(
     'weekly-digest',
-    '0 8 * * 1',
+    '0 8 * * *',
     $$
     SELECT net.http_post(
         url := (SELECT decrypted_secret FROM vault.decrypted_secrets WHERE name = 'weekly_digest_url'),
@@ -247,9 +259,10 @@ SELECT cron.schedule(
 ```sql
 SELECT jobid, jobname, schedule, active FROM cron.job;
 ```
-Verwacht: één rij `weekly-digest`, `0 8 * * 1`, `active = true`.
+Verwacht: één rij `weekly-digest`, `0 8 * * *`, `active = true`.
+Twee rijen betekent dat een oude job nog leeft — dan gaat er dubbele mail uit.
 
-**Tijdzone-noot:** `0 8 * * 1` = 09:00 lokaal in wintertijd, 10:00 in zomertijd.
+**Tijdzone-noot:** `0 8 * * *` = 09:00 lokaal in wintertijd, 10:00 in zomertijd.
 Zie de comment bovenaan `supabase/functions/weekly-digest/03_cron.sql` voor
 de trade-off.
 

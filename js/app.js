@@ -2601,29 +2601,42 @@ function renderCalendarSettingsRows(body, calendarList) {
 let userSettingsModal = null;
 let userSettingsCache = null;
 
-// Leest de eigen rij. `null` = geen rij, dus niet geabonneerd. Bij een
-// leesfout ook null, maar dan blijft `userSettingsCache` ongemoeid zodat
-// de laatst bekende waarde bewaard blijft voor de rollback in persist().
+// Leest de eigen rij en geeft `{ ok, data }` terug.
+//
+// Het onderscheid is essentieel: `{ ok: true, data: null }` betekent "geen
+// rij, dus niet geabonneerd", maar `{ ok: false }` betekent "we weten het
+// niet". Die twee samenvoegen zou een geabonneerde gebruiker bij een
+// leesfout "weekmail staat uit" voorschotelen — waarna hij de week erop
+// toch mail krijgt. Dan is de UI een leugen.
 //
 // Geen read-cache: de modal gaat zelden open en een verse lezing voorkomt
 // dat een wijziging in een ander tabblad hier verouderd blijft staan.
 async function loadUserSettings() {
-    if (!isSupabaseConfigured() || !currentUser) return null;
-    const { data, error } = await supabaseClient
-        .from('user_settings')
-        .select('digest_enabled, digest_dag')
-        .eq('user_id', currentUser.id)
-        .maybeSingle();
-    if (error) {
-        console.warn('loadUserSettings faalde:', error);
-        return null;
+    if (!isSupabaseConfigured() || !currentUser) return { ok: false, data: null };
+    try {
+        const { data, error } = await supabaseClient
+            .from('user_settings')
+            .select('digest_enabled, digest_dag')
+            .eq('user_id', currentUser.id)
+            .maybeSingle();
+        if (error) {
+            console.warn('loadUserSettings faalde:', error);
+            return { ok: false, data: null };
+        }
+        userSettingsCache = data || null;
+        return { ok: true, data: userSettingsCache };
+    } catch (err) {
+        console.warn('loadUserSettings gooide:', err);
+        return { ok: false, data: null };
     }
-    userSettingsCache = data || null;
-    return userSettingsCache;
 }
 
 // Upsert van de eigen rij. Retourneert true bij succes zodat de UI
 // onderscheid kan maken tussen opgeslagen en mislukt.
+//
+// try/catch omdat supabase-js bij een netwerk- of abort-fout de promise
+// rejecteert in plaats van een `error`-object te vullen. Zonder catch blijft
+// de spinner draaien en verdwijnt de fout in een unhandled rejection.
 async function saveUserSettings(digestEnabled, digestDag) {
     if (!isSupabaseConfigured() || !currentUser) return false;
     const row = {
@@ -2632,9 +2645,14 @@ async function saveUserSettings(digestEnabled, digestDag) {
         digest_dag: digestDag,
         updated_at: new Date().toISOString()
     };
-    const { error } = await supabaseClient.from('user_settings').upsert(row);
-    if (error) {
-        console.warn('saveUserSettings faalde:', error);
+    try {
+        const { error } = await supabaseClient.from('user_settings').upsert(row);
+        if (error) {
+            console.warn('saveUserSettings faalde:', error);
+            return false;
+        }
+    } catch (err) {
+        console.warn('saveUserSettings gooide:', err);
         return false;
     }
     userSettingsCache = { digest_enabled: digestEnabled, digest_dag: digestDag };
@@ -2655,8 +2673,23 @@ async function openUserSettingsModal() {
         return;
     }
 
-    const settings = await loadUserSettings();
-    renderUserSettingsBody(body, settings);
+    const result = await loadUserSettings();
+    if (!result.ok) {
+        // Niet het formulier tonen: een uitgeschakelde toggle zou hier
+        // "je bent niet geabonneerd" beweren terwijl we het niet weten.
+        body.innerHTML = `
+            <p class="text-danger mb-2">Je instellingen konden niet worden geladen.</p>
+            <p class="text-muted small mb-3">
+                Je huidige keuze is ongewijzigd — er is niets aangepast.
+                Probeer het opnieuw of herlaad de pagina.
+            </p>
+            <button type="button" class="btn btn-sm btn-outline-secondary" id="user-settings-retry">Opnieuw proberen</button>
+        `;
+        body.querySelector('#user-settings-retry')
+            .addEventListener('click', () => openUserSettingsModal());
+        return;
+    }
+    renderUserSettingsBody(body, result.data);
 }
 
 function renderUserSettingsBody(body, settings) {
@@ -2681,7 +2714,7 @@ function renderUserSettingsBody(body, settings) {
             <input class="form-check-input" type="checkbox" role="switch"
                    id="digest-enabled-toggle" ${enabled ? 'checked' : ''}>
             <label class="form-check-label" for="digest-enabled-toggle">Weekmail ontvangen</label>
-            <span class="save-indicator" aria-live="polite"></span>
+            <span class="save-indicator" aria-hidden="true"></span>
         </div>
         <div class="mb-1" id="digest-dag-wrap" style="${enabled ? '' : 'display:none;'}">
             <label for="digest-dag-select" class="form-label small">Op welke dag?</label>
@@ -2689,6 +2722,9 @@ function renderUserSettingsBody(body, settings) {
                 ${dagOpties}
             </select>
         </div>
+        <!-- Het vinkje zelf is decoratief; screenreaders lezen deze regel.
+             Een aria-live met alleen "✓" is betekenisloos. -->
+        <p class="visually-hidden" id="user-settings-status" role="status" aria-live="polite"></p>
         <p class="text-muted small mb-0 mt-3">
             Mail gaat naar ${escapeHtml(currentUser.email || 'je account-adres')}.
         </p>
@@ -2698,23 +2734,42 @@ function renderUserSettingsBody(body, settings) {
     const select = body.querySelector('#digest-dag-select');
     const wrap = body.querySelector('#digest-dag-wrap');
     const indicator = body.querySelector('.save-indicator');
+    const status = body.querySelector('#user-settings-status');
+
+    // Laatst bekende serverwaarde. Wordt het rollback-doel als een save
+    // faalt. `settings` kan null zijn (geen rij) — dan is "uit, maandag"
+    // de waarheid op de server, precies wat we willen terugzetten.
+    let laatstBekend = {
+        digest_enabled: enabled,
+        digest_dag: dag
+    };
 
     async function persist() {
         indicator.textContent = '⟳';
         indicator.classList.add('visible', 'saving');
-        const ok = await saveUserSettings(toggle.checked, Number(select.value));
-        indicator.textContent = ok ? '✓' : '✕';
+        indicator.classList.remove('failed');
+        const gewenst = { digest_enabled: toggle.checked, digest_dag: Number(select.value) };
+        const ok = await saveUserSettings(gewenst.digest_enabled, gewenst.digest_dag);
         indicator.classList.remove('saving');
+        indicator.textContent = ok ? '✓' : '✕';
         indicator.classList.toggle('failed', !ok);
+
         if (!ok) {
-            // Mislukt opslaan mag niet als gelukt overkomen: draai de
-            // schakelaar terug naar de laatst bekende waarde.
-            const known = userSettingsCache;
-            toggle.checked = known ? known.digest_enabled === true : false;
+            // Mislukt opslaan mag niet als gelukt overkomen. Draai ALLE
+            // controls terug, niet alleen de schakelaar: anders blijft de
+            // dropdown een dag tonen die nooit is opgeslagen.
+            toggle.checked = laatstBekend.digest_enabled === true;
+            select.value = String(laatstBekend.digest_dag);
             wrap.style.display = toggle.checked ? '' : 'none';
             indicator.classList.add('visible');
+            status.textContent = 'Opslaan mislukt. Je oude instelling staat er nog.';
             return;
         }
+
+        laatstBekend = gewenst;
+        status.textContent = gewenst.digest_enabled
+            ? `Opgeslagen. Weekmail staat aan, op ${digestDagNaam(gewenst.digest_dag) || 'maandag'}.`
+            : 'Opgeslagen. Weekmail staat uit.';
         setTimeout(() => indicator.classList.remove('visible'), 1500);
     }
 
@@ -3607,7 +3662,18 @@ function onAuthStateChange(isAuthenticated) {
         // dezelfde mail hebben er (nog) geen.
         if (window.location.hash === '#instellingen') {
             history.replaceState(null, '', window.location.pathname + window.location.search);
-            openUserSettingsModal();
+            // Wachten tot de auth-modal echt weg is. Bootstrap haalt
+            // `modal-open` van <body> pas aan het eind van zijn
+            // hide-transitie; twee modals in dezelfde tick laat een
+            // backdrop achter of verliest de scroll-lock. Kwam de gebruiker
+            // uitgelogd binnen via de uitschrijflink, dan is dat precies
+            // dit pad.
+            const authEl = document.getElementById('auth-modal');
+            if (authEl && authEl.classList.contains('show')) {
+                authEl.addEventListener('hidden.bs.modal', () => openUserSettingsModal(), { once: true });
+            } else {
+                openUserSettingsModal();
+            }
         }
 
     } else {

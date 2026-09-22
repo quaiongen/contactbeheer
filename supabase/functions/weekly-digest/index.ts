@@ -13,6 +13,11 @@
 //                             Geen verzending. VEREIST ook een userId.
 //                             Slaat het abonnement-filter over, zodat je
 //                             de mail kunt bekijken op een willekeurige dag.
+//   ?ignoreSchedule=true    → live verzendtest op een willekeurige dag:
+//                             negeert `digest_dag` maar respecteert
+//                             `digest_enabled`. Zonder deze vlag faalt een
+//                             test met alleen ?forceTo= stil met
+//                             'andere dag' op 6 van de 7 dagen.
 //   ?userId=<uuid>          → filter op één gebruiker. Verplicht bij dryRun,
 //                             sterk aanbevolen bij eerste live-tests.
 //   ?forceTo=<email>        → overschrijft de ontvanger (test-modus).
@@ -304,14 +309,24 @@ async function loadUserSettings(
 // net als de bucket-logica in 01_view.sql. Deze function is een eigen
 // deploy-eenheid en kan lib.js niet importeren. Wijzig je hier iets, wijzig
 // het daar ook (test/digest-settings.test.js dekt de JS-kant).
+function parseDagNummer(v: unknown): number | null {
+    if (typeof v === 'number') return Number.isInteger(v) ? v : null;
+    if (typeof v === 'string') {
+        const t = v.trim();
+        return /^\d+$/.test(t) ? parseInt(t, 10) : null;
+    }
+    return null;
+}
+
 function moetDigestVandaag(settings: UserSettingsRow | undefined, vandaagDow: number): boolean {
     if (!settings || settings.digest_enabled !== true) return false;
-    if (!Number.isInteger(vandaagDow) || vandaagDow < 0 || vandaagDow > 6) return false;
+    const vandaag = parseDagNummer(vandaagDow);
+    if (vandaag === null || vandaag < 0 || vandaag > 6) return false;
     const dag = settings.digest_dag === undefined || settings.digest_dag === null
         ? 1
-        : Number(settings.digest_dag);
-    if (!Number.isInteger(dag) || dag < 0 || dag > 6) return false;
-    return dag === vandaagDow;
+        : parseDagNummer(settings.digest_dag);
+    if (dag === null || dag < 0 || dag > 6) return false;
+    return dag === vandaag;
 }
 
 async function getUserEmail(
@@ -329,6 +344,11 @@ Deno.serve(async (req) => {
         const dryRun = url.searchParams.get('dryRun')?.trim() === 'true';
         const userIdFilter = url.searchParams.get('userId')?.trim() || null;
         const forceTo = url.searchParams.get('forceTo')?.trim() || null;
+        // Live verzendtest op een willekeurige dag. Zonder deze vlag faalt
+        // een test met alleen ?forceTo= stil met 'andere dag' op zes van de
+        // zeven dagen. `digest_enabled` blijft wél gerespecteerd — een
+        // uitgeschreven gebruiker mag ook een test niet ontvangen.
+        const ignoreSchedule = url.searchParams.get('ignoreSchedule')?.trim() === 'true';
 
         if (dryRun && !userIdFilter) {
             return new Response(
@@ -408,8 +428,12 @@ Deno.serve(async (req) => {
         const vandaagDow = new Date().getUTCDay();
 
         for (const [uid, contacts] of byUser.entries()) {
-            if (!moetDigestVandaag(settingsMap.get(uid), vandaagDow)) {
-                const s = settingsMap.get(uid);
+            const s = settingsMap.get(uid);
+            const geabonneerd = !!s && s.digest_enabled === true;
+            const magVandaag = ignoreSchedule
+                ? geabonneerd
+                : moetDigestVandaag(s, vandaagDow);
+            if (!magVandaag) {
                 results.push({
                     user_id: uid,
                     skipped: !s

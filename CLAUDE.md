@@ -108,7 +108,10 @@ node --check js/lib.js && node --check js/app.js
 
 ## Weekmail (Supabase Edge Function + cron)
 
-- Function heet `dynamic-responder` (auto-naam bij deploy). Op prod via cron elke maandag `0 8 * * 1` UTC.
+- Function heet `dynamic-responder` (auto-naam bij deploy). **Te verifiëren** — de broncode staat in `supabase/functions/weekly-digest/` en de vault-secret wijst naar `/functions/v1/weekly-digest`. Check in het dashboard welke naam live staat vóór een deploy.
+- Op prod via cron **elke dag** `0 8 * * *` UTC (was maandag). Sinds de abonneren-flow kiest elke user zijn dag in `user_settings.digest_dag`; de function filtert daarop. Omzetten met `SUPABASE_DIGEST_CRON_DAILY.sql`.
+- Abonnement is opt-in: geen rij in `user_settings` = geen mail. Tabel aanmaken met `SUPABASE_USER_SETTINGS.sql` vóór de function-deploy, anders faalt de function met HTTP 500.
+- Geen idempotentie: wie mid-week zijn `digest_dag` verzet krijgt die week twee mails. Bekende beperking.
 - Cron triggert `pg_net.http_post` met Bearer = secret-key uit Vault (`weekly_digest_service_key`).
 - **Bij Supabase-key rotation moet de Vault-secret handmatig bij** — anders faalt de cron met 401. Update via `SELECT vault.update_secret(id, 'sb_secret_...')`.
 - Debug: `SELECT * FROM net._http_response ORDER BY created DESC LIMIT 3;` toont laatste responses.
@@ -136,8 +139,8 @@ Bij mismatch (bijv. table cells): fetch eerst met `notion-fetch` om exacte huidi
 
 ## Externe systemen
 
-- **Supabase dev**: apart project (in `js/supabase-config-dev.js`)
-- **Supabase prod**: `rzhfwknedklqunrdimvb.supabase.co` (URL zit in `js/supabase-config.js` als publishable key)
+- **Supabase dev**: `rzhfwknedklqunrdimvb.supabase.co` (in `js/supabase-config-dev.js`, gebruikt door `index-dev.html`)
+- **Supabase prod**: `ddifqouirbnmozaxkxwy.supabase.co` (in `js/supabase-config.js`, gebruikt door `index.html` op GitHub Pages)
 - **Google Cloud Console**: OAuth client `427383300995-560ndb1vs21i1a8idhm4cm2m1u0h495v.apps.googleusercontent.com` (gedeeld dev+prod)
 - **Resend**: nu `onboarding@resend.dev` (dev-modus, alleen naar geverifieerd account); eigen domein staat op backlog
 

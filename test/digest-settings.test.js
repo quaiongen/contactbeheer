@@ -77,3 +77,30 @@ test('moetDigestVandaag: ongeldige vandaag-dow → false', () => {
     assert.equal(moetDigestVandaag({ digest_enabled: true, digest_dag: 1 }, 7), false);
     assert.equal(moetDigestVandaag({ digest_enabled: true, digest_dag: 1 }, null), false);
 });
+
+// --- Coercie-vallen ----------------------------------------------------
+//
+// Number(false), Number([]) en Number(' ') zijn allemaal 0. Zonder type-check
+// zou digestDagNaam(false) 'zondag' teruggeven en zou een lege string een
+// zondagmail opleveren. De DB heeft NOT NULL + CHECK 0-6, dus dit kan niet
+// uit de database komen — maar wel uit een verkeerd geparste bron.
+
+test('digestDagNaam: coercebare niet-nummers → null', () => {
+    assert.equal(digestDagNaam(false), null);
+    assert.equal(digestDagNaam(true), null);
+    assert.equal(digestDagNaam([]), null);
+    assert.equal(digestDagNaam(' '), null);
+    assert.equal(digestDagNaam({}), null);
+});
+
+test('moetDigestVandaag: coercebare digest_dag → false, geen zondagmail', () => {
+    assert.equal(moetDigestVandaag({ digest_enabled: true, digest_dag: '' }, 0), false);
+    assert.equal(moetDigestVandaag({ digest_enabled: true, digest_dag: false }, 0), false);
+    assert.equal(moetDigestVandaag({ digest_enabled: true, digest_dag: [] }, 0), false);
+    assert.equal(moetDigestVandaag({ digest_enabled: true, digest_dag: ' ' }, 0), false);
+});
+
+test('moetDigestVandaag: coercebare vandaagDow → false', () => {
+    assert.equal(moetDigestVandaag({ digest_enabled: true, digest_dag: 0 }, ''), false);
+    assert.equal(moetDigestVandaag({ digest_enabled: true, digest_dag: 0 }, false), false);
+});

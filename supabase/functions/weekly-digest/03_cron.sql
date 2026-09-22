@@ -27,7 +27,10 @@
 -- 3. Vault-secrets ingesteld (zie CONFIG hieronder)
 -- 4. `04_cron.sql` gerund (TEST: elke 5 minuten)
 -- 5. Handmatig verifieren dat de test-cron mail(s) verstuurt
--- 6. Cron omzetten naar maandag 09:00 (statement onderaan dit bestand)
+-- 6. Cron omzetten naar het dagelijkse schema — gebruik hiervoor
+--    `SUPABASE_DIGEST_CRON_DAILY.sql` in de repo-root, niet het statement
+--    onderaan dit bestand. Dat script matcht bestaande jobs op hun
+--    commando in plaats van op naam, zodat er geen tweede job blijft staan.
 
 -- ────────────────────────────────────────────────────────────────────────
 -- CONFIG — één keer instellen. Vul JOUW project-URL en service-role-key in.
@@ -56,6 +59,12 @@ SELECT vault.create_secret(
 -- CRON — TEST: elke 5 minuten. Ná verificatie omzetten (zie onderaan).
 -- ────────────────────────────────────────────────────────────────────────
 
+-- WAARSCHUWING bij deze test-cron, sinds de abonneren-flow:
+--   · Elke 5 minuten + geen idempotentie = een mail per 5 minuten op de dag
+--     die in `digest_dag` staat. Zet hem snel weer uit.
+--   · Tussen 23:00 en 01:00 NL wijkt de UTC-dag af van de NL-dag. De function
+--     kijkt naar de UTC-dag, dus je ziet op zondagavond de "maandag"-mail.
+--     Voor de productie-cron (08:00 UTC) speelt dat niet.
 SELECT cron.schedule(
     'weekly-digest-test',                -- naam
     '*/5 * * * *',                       -- elke 5 minuten

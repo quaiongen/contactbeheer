@@ -347,12 +347,25 @@
         'donderdag', 'vrijdag', 'zaterdag'
     ];
 
+    // Strikt parsen naar een dagnummer. `Number()` alleen is niet genoeg:
+    // Number(false), Number([]) en Number(' ') zijn alle drie 0, wat een
+    // corrupte waarde stil in een zondagmail zou veranderen. Daarom eerst
+    // een type-check, en strings alleen als ze uit louter cijfers bestaan
+    // (de database levert smallint soms als string terug).
+    function parseDagNummer(v) {
+        if (typeof v === 'number') return Number.isInteger(v) ? v : null;
+        if (typeof v === 'string') {
+            const t = v.trim();
+            return /^\d+$/.test(t) ? parseInt(t, 10) : null;
+        }
+        return null;
+    }
+
     // Geeft `null` bij alles wat geen geheel getal 0-6 is, zodat een
     // corrupte waarde zichtbaar wordt in plaats van stil 'zondag' te tonen.
     function digestDagNaam(dag) {
-        const n = Number(dag);
-        if (dag === null || dag === '' || !Number.isInteger(n)) return null;
-        if (n < 0 || n > 6) return null;
+        const n = parseDagNummer(dag);
+        if (n === null || n < 0 || n > 6) return null;
         return DIGEST_DAG_NAMEN[n];
     }
 
@@ -371,13 +384,13 @@
     // Function is een eigen deploy-eenheid en kan lib.js niet importeren.
     function moetDigestVandaag(settings, vandaagDow) {
         if (!settings || settings.digest_enabled !== true) return false;
-        const vandaag = Number(vandaagDow);
-        if (!Number.isInteger(vandaag) || vandaag < 0 || vandaag > 6) return false;
+        const vandaag = parseDagNummer(vandaagDow);
+        if (vandaag === null || vandaag < 0 || vandaag > 6) return false;
         // Ontbrekende dag valt terug op maandag, gelijk aan de kolom-default.
         const dag = settings.digest_dag === undefined || settings.digest_dag === null
             ? 1
-            : Number(settings.digest_dag);
-        if (!Number.isInteger(dag) || dag < 0 || dag > 6) return false;
+            : parseDagNummer(settings.digest_dag);
+        if (dag === null || dag < 0 || dag > 6) return false;
         return dag === vandaag;
     }
 

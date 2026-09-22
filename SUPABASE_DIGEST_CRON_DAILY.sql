@@ -4,12 +4,16 @@
 -- `user_settings.digest_dag`. De Edge Function filtert daarop. Met een
 -- maandag-only cron zou die kolom dode configuratie zijn.
 --
--- Draai dit NA `SUPABASE_USER_SETTINGS.sql`. Als je die nog niet hebt
--- gedraaid, mailt de function niemand — geen rijen in user_settings
--- betekent niemand geabonneerd. Dat is veilig, maar wel stil.
+-- Volgorde is strikt: EERST `SUPABASE_USER_SETTINGS.sql`, DAN de function
+-- deployen, DAN dit script. Bestaat de tabel `user_settings` niet, dan
+-- gooit `loadUserSettings` in de function en faalt de hele aanroep met
+-- HTTP 500 — niet stil, maar wel een harde fout in `net._http_response`.
 --
--- Let op: de mail wordt niet vaker verstuurd. De cron vuurt dagelijks,
--- maar per gebruiker gaat er nog steeds maximaal één mail per week uit.
+-- Let op: dit garandeert GEEN maximum van één mail per week. De cron vuurt
+-- dagelijks en er is (nog) geen idempotentie. Wie mid-week zijn digest_dag
+-- verzet van maandag naar woensdag krijgt die week twee mails, en elke
+-- handmatige invocatie op de gekozen dag stuurt er nog een. Met de oude
+-- wekelijkse cron was dat structureel onmogelijk. Bekende beperking.
 
 -- ── Eerst kijken wat er staat ───────────────────────────────────────────
 -- SELECT jobid, jobname, schedule FROM cron.job;
