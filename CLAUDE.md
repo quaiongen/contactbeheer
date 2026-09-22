@@ -108,7 +108,7 @@ node --check js/lib.js && node --check js/app.js
 
 ## Weekmail (Supabase Edge Function + cron)
 
-- Function heet `dynamic-responder` (auto-naam bij deploy). **Te verifiëren** — de broncode staat in `supabase/functions/weekly-digest/` en de vault-secret wijst naar `/functions/v1/weekly-digest`. Check in het dashboard welke naam live staat vóór een deploy.
+- Function heet `weekly-digest` — gelijk aan de broncode-map en de vault-URL. (De eerdere vermelding `dynamic-responder` was onjuist; owner bevestigd 2026-09-22.)
 - Op prod via cron **elke dag** `0 8 * * *` UTC (was maandag). Sinds de abonneren-flow kiest elke user zijn dag in `user_settings.digest_dag`; de function filtert daarop. Omzetten met `SUPABASE_DIGEST_CRON_DAILY.sql`.
 - Abonnement is opt-in: geen rij in `user_settings` = geen mail. Tabel aanmaken met `SUPABASE_USER_SETTINGS.sql` vóór de function-deploy, anders faalt de function met HTTP 500.
 - Geen idempotentie: wie mid-week zijn `digest_dag` verzet krijgt die week twee mails. Bekende beperking.
