@@ -84,7 +84,7 @@ Toekomstige uitbreidingen (later):
 8. **Diff-review** — Code-reviewer post samenvatting per taak-diff → user ✓.
 9. **Documentatie (page-content)** — Notion-keeper stelt doc-update voor → user ✓ → uitvoert.
 10. **Deploy-voorbereiding & push** — Deploy-wachter bereidt cache-buster + SQL voor. `git push` wordt vervolgens **door de agent uitgevoerd** direct na jouw expliciete ✓. Prod-SQL wordt om praktische reden (Supabase SQL Editor-toegang) door de user zelf gedraaid — na dezelfde ✓.
-11. **Backlog-status (property-set)** — Notion-keeper zet backlog-item op de juiste fase automatisch (Plannen → Design → Bouwen → Testen → Implementeren → Gereed). Dit is uitgezonderd van de gate; alleen page-content-mutaties vereisen ✓.
+11. **Backlog-status (property-set) + titel-cost** — Notion-keeper zet backlog-item op de juiste fase automatisch (Plannen → Design → Bouwen → Testen → Implementeren → Gereed). Bij *Gereed*: werkt tegelijk de item-titel bij met de totaal-schatting uit het cost-log: `<originele-titel> (N euro)`, afgerond op hele euro's; vervang bestaande `(N euro)`-suffix bij re-close. Dit alles is uitgezonderd van de gate; alleen page-content-mutaties vereisen ✓.
 
 ## Fast lane — kleine wijzigingen
 
@@ -143,10 +143,17 @@ Hybride aanpak: provider-dashboards = ground truth op totaal-niveau, per-feature
 - Structuur: één regel per fase-completion, ondertekend door de agent die de fase afsloot
 - Formaat:
   ```
-  | timestamp | agent | fase | model | tokens_in | tokens_out | est_usd |
+  | timestamp | agent | fase | model | tokens_in | tokens_out | est_eur |
   ```
+- Kolom `est_eur` in euro's (bij providerprijzen in USD: reken om via een vaste koers uit de config; standaard USD→EUR = 0.92, in het cost-log-README bij te stellen)
 - Aan het eind van elke feature (na push) voegt Orchestrator een `Totaal:`-regel onderaan
 - Bestand wordt gecommit als onderdeel van de laatste commit van de feature
+
+**Backlog-titel-update bij afronding**
+- Zodra Notion-keeper de backlog-status op *Gereed* zet, werkt hij in dezelfde operatie de **titel** van het backlog-item bij: originele titel + ` (N euro)`, waarbij N het `Totaal:` uit het cost-log-bestand is, afgerond op hele euro's.
+- Voorbeeld: `Toevoegen outlook agenda koppeling` → `Toevoegen outlook agenda koppeling (30 euro)`.
+- Herhaalde afronding (bij re-open + opnieuw sluiten): vervang de bestaande `(N euro)`-suffix — niet stapelen.
+- Deze title-update is een property-mutation, geen page-content — valt onder de automatische route (geen gate ✓ nodig).
 
 **Wie schrijft wat**
 - Elke agent na afsluiting van zijn fase: 1 regel toevoegen (Orchestrator ook)

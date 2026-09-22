@@ -269,13 +269,14 @@ Hybride aanpak (spec-sectie *Cost tracking*): per-feature logboek als schatting 
 
 Markdown-tabel; één regel per fase-completion:
 
-| timestamp | agent | fase | model | tokens_in | tokens_out | est_usd |
+| timestamp | agent | fase | model | tokens_in | tokens_out | est_eur |
 |---|---|---|---|---|---|---|
-| 2026-09-22T10:15Z | Brainstormer | spec | claude-sonnet-5 | 12500 | 3200 | ~0.09 |
-| 2026-09-22T10:41Z | Planner | plan | claude-opus-5 | 18000 | 5400 | ~0.68 |
+| 2026-09-22T10:15Z | Brainstormer | spec | claude-sonnet-5 | 12500 | 3200 | ~0.08 |
+| 2026-09-22T10:41Z | Planner | plan | claude-opus-5 | 18000 | 5400 | ~0.63 |
 | ... | ... | ... | ... | ... | ... | ... |
 | **Totaal** | | | | **N** | **N** | **~0.XX** |
 
+- Kolom `est_eur` in euro's. Providerprijzen zijn meestal USD; reken om via vaste koers (default USD→EUR = **0.92**, hier bij te stellen als de koers structureel afwijkt).
 - Schattingen krijgen prefix `~` zodat ze bij reconciliatie herkenbaar zijn.
 - Timestamps in UTC (ISO-8601, minuut-precisie is genoeg).
 
@@ -286,11 +287,23 @@ awk -F'|' '/\| ~?[0-9]/ {gsub(/~/, ""); gsub(/ /, "", $8); sum+=$8} END {print s
   docs/superpowers/costs/2026-09-*.md
 ```
 
+## Backlog-titel bij afronding
+
+Zodra Notion-keeper de backlog-status op **Gereed** zet, werkt hij in dezelfde operatie de titel bij:
+
+- Lees het `Totaal:`-bedrag uit dit cost-log-bestand (kolom `est_eur`)
+- Rond af op hele euro's
+- Nieuwe titel = originele titel + ` (N euro)`
+- Als er al een `(N euro)`-suffix stond (re-open + re-close): vervang de bestaande suffix, niet stapelen
+
+Voorbeeld: `Toevoegen outlook agenda koppeling` → `Toevoegen outlook agenda koppeling (30 euro)`.
+
 ## Reconciliatie (1e van de maand)
 
-1. Lees per zichtbare Buzz-agent het maandtotaal in Anthropic Console (of andere provider-dashboard).
-2. Som de `Totaal:`-regels uit `docs/superpowers/costs/YYYY-MM-*.md`.
-3. Correctiefactor = provider ÷ logboek. Bij > 1.2 of < 0.8: agents recalibreren via een prompt-note.
+1. Lees per zichtbare Buzz-agent het maandtotaal in Anthropic Console (of andere provider-dashboard, in USD).
+2. Reken maandtotalen om naar EUR met dezelfde koers als het logboek.
+3. Som de `Totaal:`-regels uit `docs/superpowers/costs/YYYY-MM-*.md`.
+4. Correctiefactor = provider ÷ logboek. Bij > 1.2 of < 0.8: agents recalibreren via een prompt-note. Bij structurele koersafwijking: stel de default-koers hier bij.
 ```
 
 - [ ] **Step 3: Commit**
@@ -333,17 +346,17 @@ Vereiste inhoud (in het Nederlands, waarin de agent zichzelf leest bij elke turn
     Feature-thread: <link naar thread-root>
     Started: <ISO-timestamp UTC>
 
-    | timestamp | agent | fase | model | tokens_in | tokens_out | est_usd |
+    | timestamp | agent | fase | model | tokens_in | tokens_out | est_eur |
     |---|---|---|---|---|---|---|
     ```
 
-    Elke keer een subagent klaar is: lees `<usage>` uit completion, voeg één regel toe. Bij eigen turns: schrijf conservatieve schatting (prefix `~`). Bij feature-afronding (na push):
+    Elke keer een subagent klaar is: lees `<usage>` uit completion, reken kosten om naar EUR (USD-prijzen × 0.92), voeg één regel toe. Bij eigen turns: schrijf conservatieve schatting (prefix `~`). Bij feature-afronding (na push):
 
     ```markdown
     | **Totaal** | | | | **N** | **N** | **~N.NN** |
     ```
 
-    Committen samen met de laatste feature-commit.
+    Committen samen met de laatste feature-commit. Notion-keeper gebruikt dit totaal om de backlog-titel aan te vullen met `(N euro)` — zie Task 23.
 8. **Communicatie** — publiek waar het teamzichtbaarheid vraagt (pickup/blocker/done), stil waar niet. Nederlands. Beknopt.
 9. **Callback-mention regel** — bij deliverable of blocker altijd de user (of delegator) `@mention`-en.
 
@@ -988,25 +1001,34 @@ You are the Notion-keeper.
 - Filter altijd op Project = "Contactbeheer"
 - Status fases: Niet gestart · Plannen · Design/mockup · Bouwen · Testen · Implementeren · Gereed
 
-## Two flavors of update
+## Three flavors of update
 1. **Backlog fase-property update** (automatic, no gate):
    - When Orchestrator says "moved to Bouwen": set Status property.
    - Use notion-update-page with property update.
 
-2. **Doc page-content update** (HARD GATE — always propose first):
+2. **Backlog fase → Gereed + titel-cost-update** (automatic, no gate):
+   - Wanneer Orchestrator zegt "moved to Gereed": zet Status property én werk in dezelfde call de item-titel bij.
+   - Lees het cost-log-bestand `docs/superpowers/costs/YYYY-MM-DD-<featurename>.md`, pak de `Totaal:`-regel, kolom `est_eur`.
+   - Rond af op hele euro's (`round(N)`).
+   - Nieuwe titel = originele titel (strip een bestaande `(N euro)`-suffix eerst) + ` (N euro)`.
+   - Voorbeeld: `Toevoegen outlook agenda koppeling` → `Toevoegen outlook agenda koppeling (30 euro)`.
+   - Gebruik notion-update-page met property update voor zowel Status als Title.
+
+3. **Doc page-content update** (HARD GATE — always propose first):
    - Draft the search-and-replace patch (old_str / new_str pairs).
    - Return the proposal to Orchestrator; DO NOT execute.
    - Orchestrator surfaces it in the thread for user ✓.
    - After ✓: Orchestrator invokes you again with permission to execute.
 
 ## What you do per invocation
-Read task from Orchestrator. Determine flavor (property vs content). Act accordingly.
+Read task from Orchestrator. Determine flavor (property vs Gereed-close vs content). Act accordingly.
 
 Return: what changed / what was proposed.
 
 ## Boundaries
 - Do NOT execute page-content updates without explicit "you have user ✓ for this content update" from Orchestrator.
 - Do NOT create backlog items unless asked — leave that to user.
+- Titel-cost-suffix: ALTIJD strip-en-vervang, nooit stapelen (`(30 euro)` mag niet worden `(30 euro) (32 euro)` bij re-close).
 ```
 
 - [ ] **Step 2: Commit**
@@ -1075,6 +1097,7 @@ Verwacht — de complete flow uit spec-sectie "Feature-flow (non-triviaal)":
 - [ ] Deploy-wachter verifieert GitHub Pages deploy
 - [ ] Cost-log volledig gevuld inclusief `Totaal:` regel
 - [ ] Feature backlog-status op "Gereed"
+- [ ] Backlog-titel aangevuld met ` (N euro)` matching het cost-log-totaal, afgerond op hele euro's
 
 - [ ] **Step 3: Milestone ✓ door user**
 
