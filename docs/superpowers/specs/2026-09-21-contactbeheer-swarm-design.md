@@ -83,7 +83,7 @@ Toekomstige uitbreidingen (later):
 7. **Implementatie per taak** — Orchestrator dispatcht in volgorde: Test-analyser (bepaalt scope) → Builder (schrijft tests + implementatie: frontend/supabase/calendar) → Test-runner (draait). Test-first waar toepasbaar.
 8. **Diff-review** — Code-reviewer post samenvatting per taak-diff → user ✓.
 9. **Documentatie (page-content)** — Notion-keeper stelt doc-update voor → user ✓ → uitvoert.
-10. **Deploy-voorbereiding** — Deploy-wachter bereidt cache-buster + SQL voor. Prod-SQL en `git push` blijven **user-handelingen**.
+10. **Deploy-voorbereiding & push** — Deploy-wachter bereidt cache-buster + SQL voor. `git push` wordt vervolgens **door de agent uitgevoerd** direct na jouw expliciete ✓. Prod-SQL wordt om praktische reden (Supabase SQL Editor-toegang) door de user zelf gedraaid — na dezelfde ✓.
 11. **Backlog-status (property-set)** — Notion-keeper zet backlog-item op de juiste fase automatisch (Plannen → Design → Bouwen → Testen → Implementeren → Gereed). Dit is uitgezonderd van de gate; alleen page-content-mutaties vereisen ✓.
 
 ## Fast lane — kleine wijzigingen
@@ -101,13 +101,15 @@ Bij "klein" wordt Brainstorm + Plan overgeslagen:
 
 ## Harde gates (altijd user ✓ vereist)
 
-- SQL naar **prod** Supabase
-- `git push` naar `main`
-- Notion **page-content**-updates (search-and-replace via `notion-update-page`). *Backlog-fase-property-updates zijn hiervan uitgezonderd.*
-- Mail versturen (weekmail-tests, Resend calls)
-- Nieuwe Google OAuth-scope toevoegen
-- Nieuwe agent aanmaken of bestaande agent-config wijzigen
-- Cross-cutting refactor (>3 bestanden geraakt zonder expliciete plan-goedkeuring)
+Regel: geen enkele hard-gate-actie mag worden uitgevoerd zonder expliciete user ✓ in de thread. Na ✓ voert **de agent** de actie uit — tenzij anders vermeld.
+
+- **SQL naar prod Supabase** — user voert zelf uit in Supabase SQL Editor na ✓ (tooling-reden, geen policy-reden)
+- **`git push` naar `main`** — agent voert uit na ✓
+- **Notion page-content-updates** (search-and-replace via `notion-update-page`) — agent voert uit na ✓. *Backlog-fase-property-updates zijn hiervan uitgezonderd — die gaan automatisch.*
+- **Mail versturen** (weekmail-tests, Resend calls) — agent voert uit na ✓
+- **Nieuwe Google OAuth-scope toevoegen** — agent bereidt voor, user voegt zelf toe in Google Cloud Console na ✓
+- **Nieuwe agent aanmaken of bestaande agent-config wijzigen** — user keurt in Buzz Desktop
+- **Cross-cutting refactor** (>3 bestanden geraakt zonder expliciete plan-goedkeuring) — agent voert uit na ✓
 
 ## Mockups tijdens brainstorm
 
