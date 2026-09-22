@@ -38,3 +38,4 @@ npm-debug.log*
 .superpowers/
 supabase/backups/ 
 docs/nieuwecode/  
+.superpowers/brainstorm/
