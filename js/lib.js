@@ -337,6 +337,50 @@
         return dtl;
     }
 
+    // --- Weekmail-abonnement -------------------------------------------
+
+    // Dagnummering volgt `Date.getDay()` en PostgreSQL's `EXTRACT(DOW)`:
+    // 0 = zondag … 6 = zaterdag. Die twee zijn gelijk, dus er is één
+    // nummering over de hele stack.
+    const DIGEST_DAG_NAMEN = [
+        'zondag', 'maandag', 'dinsdag', 'woensdag',
+        'donderdag', 'vrijdag', 'zaterdag'
+    ];
+
+    // Geeft `null` bij alles wat geen geheel getal 0-6 is, zodat een
+    // corrupte waarde zichtbaar wordt in plaats van stil 'zondag' te tonen.
+    function digestDagNaam(dag) {
+        const n = Number(dag);
+        if (dag === null || dag === '' || !Number.isInteger(n)) return null;
+        if (n < 0 || n > 6) return null;
+        return DIGEST_DAG_NAMEN[n];
+    }
+
+    // Moet deze gebruiker vandaag de weekmail krijgen?
+    //
+    // `settings` is de rij uit `user_settings`, of null/undefined als de
+    // gebruiker er geen heeft. Geen rij = niet geabonneerd: dat is de kern
+    // van de opt-in, dus de default is altijd "niet mailen".
+    //
+    // `digest_enabled` moet exact `true` zijn. Een truthy niet-boolean
+    // (bijvoorbeeld de string 'false') telt niet mee — een mail per ongeluk
+    // versturen is erger dan er een missen.
+    //
+    // Deze regel staat ook in `supabase/functions/weekly-digest/index.ts`.
+    // Bewuste duplicatie, zelfde afspraak als de bucket-logica: de Edge
+    // Function is een eigen deploy-eenheid en kan lib.js niet importeren.
+    function moetDigestVandaag(settings, vandaagDow) {
+        if (!settings || settings.digest_enabled !== true) return false;
+        const vandaag = Number(vandaagDow);
+        if (!Number.isInteger(vandaag) || vandaag < 0 || vandaag > 6) return false;
+        // Ontbrekende dag valt terug op maandag, gelijk aan de kolom-default.
+        const dag = settings.digest_dag === undefined || settings.digest_dag === null
+            ? 1
+            : Number(settings.digest_dag);
+        if (!Number.isInteger(dag) || dag < 0 || dag > 6) return false;
+        return dag === vandaag;
+    }
+
     return {
         // constants
         BUCKETS, BUCKET_COLORS, BUCKET_TITLES,
@@ -367,6 +411,10 @@
         // slot-zoeker
         presetSpec,
         vindVrijeSlot,
-        bouwAgendaItems
+        bouwAgendaItems,
+        // weekmail-abonnement
+        DIGEST_DAG_NAMEN,
+        digestDagNaam,
+        moetDigestVandaag
     };
 }));
