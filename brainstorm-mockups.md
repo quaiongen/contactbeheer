@@ -16,6 +16,38 @@ De keuze-knoppen in de mockups zijn statisch (brainstorm-server draait niet mee)
 
 ---
 
+## Sessie 2026-09-23 — Contacten importeren uit telefoon
+
+**Map:** `.superpowers/brainstorm/99648-1790172307/`
+
+Ontwerpsessie voor de wizard die opent na eerste login (of via menu) om vCard-contacten uit een telefoon-export te importeren. 4 stappen: platform kiezen → export-instructies per platform → inlezen → selecteren wat je wil importeren.
+
+| File | Wat het toont |
+|------|---------------|
+| `00-index.html` | Index met kaarten naar alle schermen |
+| `01-platform.html` | Stap 1 — iPhone / Android / eigen `.vcf`, met auto-detect-badge |
+| `02-export.html` | Stap 2 iPhone v1 (verkeerde stappen — vervangen door v2) |
+| `02-export-v2.html` | Stap 2 iPhone v2 — instructies bevestigd door owner (gekozen richting) |
+| `02-export-android.html` | Stap 2 Android/Google via contacts.google.com — concept, nog te verifiëren |
+| `02-export-vcf.html` | Stap 2 skip-flow bij "ik heb al een `.vcf`" |
+| `03-loading.html` | Stap 3 — spinner met "247 gevonden"-teller |
+| `04-selectie.html` | Stap 4 — lijst met slimme defaults, zoek, "al aanwezig"-badge, uit-gevinkte contacten zonder tel/mail |
+| `wizard-shape.html` | Vergelijking A (meerstaps-modal) vs B (accordion). Keuze: A |
+
+```bash
+open ".superpowers/brainstorm/99648-1790172307/00-index.html"
+open ".superpowers/brainstorm/99648-1790172307/01-platform.html"
+open ".superpowers/brainstorm/99648-1790172307/02-export-v2.html"
+open ".superpowers/brainstorm/99648-1790172307/02-export-android.html"
+open ".superpowers/brainstorm/99648-1790172307/02-export-vcf.html"
+open ".superpowers/brainstorm/99648-1790172307/03-loading.html"
+open ".superpowers/brainstorm/99648-1790172307/04-selectie.html"
+```
+
+**Spec:** `docs/superpowers/specs/2026-09-23-contacten-importeren-design.md`
+
+---
+
 ## Sessie 2026-09-19 — Slot-zoeker wizard
 
 **Map:** `.superpowers/brainstorm/45817-1789811966/`

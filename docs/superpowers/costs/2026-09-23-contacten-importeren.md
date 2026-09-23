@@ -6,3 +6,4 @@ Started: 2026-09-23T09:42:04Z
 | timestamp | agent | fase | model | tokens_in | tokens_out | est_eur |
 |---|---|---|---|---|---|---|
 | 2026-09-23T09:42:04Z | Orchestrator | intake | claude-opus-5-5 | ~40000 | ~2000 | ~0.69 |
+| 2026-09-23T20:15Z | Brainstormer | spec | claude-opus-4-7 | ~300000 | ~20000 | ~5.52 |
