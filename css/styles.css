@@ -1229,3 +1229,25 @@ header h1.h5 {
 }
 .wizard-actions .primary:hover { background: #1E2530; }
 
+
+/* ===== Contacten importeren uit telefoon ===== */
+.import-wizard-progress { margin-top: .15rem; }
+.import-wizard-progress .done { color: var(--bs-success); }
+.platform-cards { display: flex; flex-direction: column; gap: .75rem; }
+@media (min-width: 576px) { .platform-cards { flex-direction: row; } .platform-cards .platform-card { flex: 1; } }
+.platform-card { border: 2px solid var(--bs-border-color); border-radius: .5rem; background: var(--bs-body-bg); padding: 1rem; text-align: center; cursor: pointer; }
+.platform-card.auto-detected { border-color: var(--bs-primary-border-subtle, #9ec5fe); }
+.platform-card.selected { border-color: var(--bs-primary); background: var(--bs-primary-bg-subtle, #e7f1ff); }
+.platform-card .emoji { display: block; font-size: 2rem; }
+.export-steps { padding-left: 1.25rem; }
+.export-steps li { margin-bottom: .5rem; }
+.export-hint { color: var(--bs-secondary-color); font-size: .85rem; }
+.file-picker .error { color: var(--bs-danger); font-size: .9rem; }
+.wizard-loading { text-align: center; padding: 2rem 0; }
+.import-list { max-height: 50vh; overflow-y: auto; border: 1px solid var(--bs-border-color); border-radius: .5rem; }
+.contact-row { display: flex; gap: .6rem; align-items: flex-start; padding: .5rem .75rem; border-bottom: 1px solid var(--bs-border-color-translucent); cursor: pointer; }
+.contact-row:last-child { border-bottom: 0; }
+.contact-row .name { font-weight: 600; }
+.contact-row .summary { font-size: .85rem; color: var(--bs-secondary-color); }
+.contact-row.dimmed .name, .contact-row.dimmed .summary { color: var(--bs-secondary-color); }
+.contact-row .exists-badge { font-size: .7rem; background: var(--bs-secondary-bg); color: var(--bs-secondary-color); border-radius: .25rem; padding: .05rem .4rem; margin-left: .4rem; font-weight: 400; }

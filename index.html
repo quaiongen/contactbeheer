@@ -24,6 +24,7 @@
                     <li><button class="dropdown-item" id="manage-categories-btn" type="button"><i class="bi bi-tags me-2"></i>Categorieën</button></li>
                     <li><button class="dropdown-item" id="user-settings-btn" type="button"><i class="bi bi-gear me-2"></i>Instellingen</button></li>
                     <li><button class="dropdown-item" id="import-data-btn" type="button"><i class="bi bi-upload me-2"></i>Importeren</button></li>
+                    <li><button class="dropdown-item" id="import-phone-btn" type="button"><i class="bi bi-phone me-2"></i>Contacten importeren uit telefoon</button></li>
                     <li><button class="dropdown-item" id="export-data-btn" type="button"><i class="bi bi-download me-2"></i>Exporteren</button></li>
                     <li><hr class="dropdown-divider"></li>
                     <li id="user-info" style="display: none;">
@@ -318,6 +319,24 @@
                     </div>
                     <div class="modal-body pt-0" id="slot-wizard-body">
                         <!-- Filled dynamically by openSlotWizard() -->
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Contacten importeren uit telefoon (vCard-wizard) -->
+        <div class="modal fade" id="import-phone-wizard-modal" tabindex="-1" aria-hidden="true" aria-labelledby="import-phone-wizard-title">
+            <div class="modal-dialog modal-dialog-centered modal-dialog-scrollable">
+                <div class="modal-content">
+                    <div class="modal-header">
+                        <div>
+                            <h5 class="modal-title" id="import-phone-wizard-title">Contacten importeren</h5>
+                            <div class="import-wizard-progress small text-muted" id="import-phone-wizard-progress"></div>
+                        </div>
+                        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Sluiten"></button>
+                    </div>
+                    <div class="modal-body" id="import-phone-wizard-body">
+                        <!-- Filled dynamically by openPhoneImportWizard() -->
                     </div>
                 </div>
             </div>
