@@ -1,6 +1,6 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
-const { parseVCard, unescapeVCardText, mapVCardToContact } = require('../js/lib.js');
+const { parseVCard, unescapeVCardText, mapVCardToContact, selectDefaultPicked, isImportAuthError } = require('../js/lib.js');
 
 const wrap = (...lines) => ['BEGIN:VCARD', 'VERSION:3.0', ...lines, 'END:VCARD'].join('\r\n');
 
@@ -156,4 +156,31 @@ test('map: camelCase keys, notes, overige velden genegeerd', () => {
     assert.deepEqual(Object.keys(c).sort(), ['birthday', 'customFields', 'email', 'name', 'notes', 'phone']);
     assert.equal(c.notes, 'hoi');
     assert.equal(c.custom_fields, undefined);
+});
+
+test('default: telefoon, niet bestaand, niet eerder gezien → true', () => {
+    assert.equal(selectDefaultPicked({ name: 'Anna', phone: '06', email: '' }, new Set(), new Set()), true);
+    assert.equal(selectDefaultPicked({ name: 'Anna', phone: '', email: 'a@b.nl' }, new Set(), new Set()), true);
+});
+
+test('default: geen telefoon en geen email → false', () => {
+    assert.equal(selectDefaultPicked({ name: 'Anna', phone: '', email: '' }, new Set(), new Set()), false);
+});
+
+test('default: bestaande naam (case-insensitive) → false', () => {
+    assert.equal(selectDefaultPicked({ name: ' ANNA ', phone: '06', email: '' }, new Set(['anna']), new Set()), false);
+});
+
+test('default: eerder in bestand gezien → false', () => {
+    assert.equal(selectDefaultPicked({ name: 'Anna', phone: '06', email: '' }, new Set(), new Set(['anna'])), false);
+});
+
+test('authError: 401, PGRST301, PGRST303, 42501 → true; rest → false', () => {
+    assert.equal(isImportAuthError({ status: 401 }), true);
+    assert.equal(isImportAuthError({ code: 'PGRST301' }), true);
+    assert.equal(isImportAuthError({ code: 'PGRST303' }), true);
+    assert.equal(isImportAuthError({ code: '42501' }), true);
+    assert.equal(isImportAuthError({ code: '23505' }), false);
+    assert.equal(isImportAuthError(new Error('netwerk')), false);
+    assert.equal(isImportAuthError(null), false);
 });

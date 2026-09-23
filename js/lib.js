@@ -489,6 +489,22 @@
         };
     }
 
+    /** Slimme default voor het vinkje: contactgegevens aanwezig én geen duplicaat. */
+    function selectDefaultPicked(contact, existingNames, seenNamesInFile) {
+        const key = contact.name.trim().toLowerCase();
+        const hasInfo = Boolean(contact.phone || contact.email);
+        return hasInfo && !existingNames.has(key) && !seenNamesInFile.has(key);
+    }
+
+    /**
+     * Supabase/PostgREST-fout die wijst op verlopen sessie of geen toegang (RLS).
+     * In supabase-js v2 zit `status` op het response, niet op de error: de caller
+     * geeft `{ ...error, status }` mee. PGRST303 = "JWT expired" (PostgREST 12+).
+     */
+    function isImportAuthError(err) {
+        return Boolean(err) && (err.status === 401 || err.code === 'PGRST301' || err.code === 'PGRST303' || err.code === '42501');
+    }
+
     return {
         // constants
         BUCKETS, BUCKET_COLORS, BUCKET_TITLES,
@@ -527,6 +543,8 @@
         // vCard-import
         unescapeVCardText,
         parseVCard,
-        mapVCardToContact
+        mapVCardToContact,
+        selectDefaultPicked,
+        isImportAuthError
     };
 }));
