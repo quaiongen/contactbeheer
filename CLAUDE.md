@@ -94,7 +94,7 @@ Edge-function-bronnen zijn daarom **één zelfstandig `index.ts`-bestand zonder 
 2. Draai SQL op **prod-Supabase** vóór of gelijk met push, anders crasht de live app zodra iemand de feature gebruikt
 3. SQL-bestanden altijd in repo-root als `SUPABASE_*.sql`
 
-**Cache-buster:** bij CSS-wijziging bump `?v=YYYYMMDD?` in **beide** `index.html` en `index-dev.html`. Anders zien users oude styling.
+**Cache-buster:** bij wijziging in CSS of JS (`css/styles.css`, `js/lib.js`, `js/app.js`) bump `?v=YYYYMMDD?` op die drie bestanden in **beide** `index.html` en `index-dev.html`. Anders zien users oude versies.
 
 ---
 
