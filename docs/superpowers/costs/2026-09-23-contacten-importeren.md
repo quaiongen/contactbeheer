@@ -8,3 +8,4 @@ Started: 2026-09-23T09:42:04Z
 | 2026-09-23T09:42:04Z | Orchestrator | intake | claude-opus-5-5 | ~40000 | ~2000 | ~0.69 |
 | 2026-09-23T20:15Z | Brainstormer | spec | claude-opus-4-7 | ~300000 | ~20000 | ~5.52 |
 | 2026-09-23T20:29Z | Planner | plan | claude-sonnet-5 | ~200000 | ~35000 | ~1.10 |
+| 2026-09-23T20:37Z | Orchestrator | build (T1–T7,T10,T11) | claude-opus-4-7 | ~200000 | ~30000 | ~4.83 |
