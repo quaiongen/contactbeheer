@@ -319,7 +319,11 @@ function setupEventListeners() {
     
     // Import file input change
     importFileInput.addEventListener('change', handleImportFile);
-    
+
+    // Contacten importeren uit telefoon (vCard-wizard)
+    const importPhoneBtn = document.getElementById('import-phone-btn');
+    if (importPhoneBtn) importPhoneBtn.addEventListener('click', () => openPhoneImportWizard('menu'));
+
     // Sort contacts dropdown
     const sortSelect = document.getElementById('sort-contacts');
     if (sortSelect) {
@@ -3594,6 +3598,7 @@ async function handleLogout() {
         // Clear local data
         contactsData = [];
         attemptsData = [];
+        sessionStorage.removeItem(PHONE_IMPORT_AUTO_KEY);
         renderContacts();
 
         // Google Calendar ontkoppelen
@@ -3680,6 +3685,7 @@ function onAuthStateChange(isAuthenticated) {
         // Clear data on logout
         contactsData = [];
         categoriesData = [];
+        sessionStorage.removeItem(PHONE_IMPORT_AUTO_KEY);
         
         // Hide user info
         document.getElementById('user-info').style.display = 'none';
@@ -3887,6 +3893,9 @@ async function loadDataFromSupabase() {
 
         // Render the contacts
         renderContacts();
+
+        // Lege account → onboarding-wizard voor telefoon-import
+        maybeAutoOpenPhoneImport();
 
         console.log(`Loaded ${contactsData.length} contacts and ${categoriesData.length} categories from Supabase`);
         
@@ -4143,4 +4152,355 @@ async function deleteCategory(id) {
         console.error('Error deleting category:', error);
         alert('Fout bij verwijderen categorie: ' + error.message);
     }
+}
+
+/**
+ * ======================
+ * CONTACTEN IMPORTEREN UIT TELEFOON (vCard-wizard)
+ * ======================
+ */
+
+// Bewerk hier om de export-instructies aan te passen; deploy = git push.
+const IMPORT_INSTRUCTIONS = {
+    iphone: [
+        'Open de <strong>Telefoon</strong>-app.',
+        'Tik onderin op <strong>Contacten</strong>.',
+        'Tik linksboven op het <strong>pijltje naar links</strong> — je komt nu in de lijsten.',
+        'Houd de <strong>lijst</strong> die je wil exporteren <strong>ingedrukt</strong> en tik op <strong>Exporteer</strong>.',
+        'Optioneel: kies welke velden je wil delen en vink aan.',
+        'Tik op <strong>Sla op in Bestanden</strong> en kies een plek waar je het straks terugvindt.'
+    ],
+    android: [
+        'Ga naar <strong>contacts.google.com</strong> in je browser en log in met je Google-account.',
+        'Selecteer linksboven het <strong>vierkantje</strong> naast "Contacten" om alle contacten aan te vinken (of selecteer per stuk).',
+        'Klik op het <strong>drie-punten-menu</strong> ⋮ rechtsboven → <strong>Exporteren</strong>.',
+        'Kies <strong>vCard (voor iOS-contacten)</strong> als indeling.',
+        'Klik op <strong>Exporteren</strong>. Het bestand <code>contacts.vcf</code> wordt gedownload.'
+    ],
+    vcf: 'Kies het <code>.vcf</code>-bestand dat je al hebt (bijvoorbeeld eerder geëxporteerd of iemand heeft het je gestuurd).',
+    hintIphone: 'Werken de stappen niet meer of zijn ze anders bij jouw iOS-versie? Laat het weten — we passen ze aan.',
+    // Verwijder deze regel zodra iemand met Android de stappen heeft gevalideerd (zie plan Task 9).
+    hintAndroid: 'Werken de stappen niet meer? Laat het weten — we passen ze aan. (Kan verouderd zijn; zie <a href="https://support.google.com/contacts/answer/7199294" target="_blank" rel="noopener">Google-help</a>.)',
+    hintVcf: 'Ken je het formaat niet? Ga terug en kies iPhone of Android — dan geven we stap-voor-stap uitleg.'
+};
+
+const PHONE_IMPORT_AUTO_KEY = 'phone_import_auto_shown';
+const PHONE_IMPORT_STEP_NUMBER = { platform: 1, export: 2, loading: 3, selectie: 4 };
+
+let phoneImportModal = null;
+let phoneImportState = null;
+
+function detectImportPlatform() {
+    const ua = navigator.userAgent || '';
+    if (/iPhone|iPad|iPod/i.test(ua)) return 'iphone';
+    if (/Android/i.test(ua)) return 'android';
+    return null;
+}
+
+function newPhoneImportState(source) {
+    return {
+        source,
+        step: 'platform',
+        suggested: detectImportPlatform(),
+        platform: null,
+        file: null,
+        error: '',
+        rows: [],        // [{contact, picked, badge: null|'exists'|'dup'}], alfabetisch
+        search: '',
+        importing: false
+    };
+}
+
+/** source: 'auto' (lege account na login) of 'menu'. */
+function openPhoneImportWizard(source) {
+    const el = document.getElementById('import-phone-wizard-modal');
+    if (!el) return;
+    if (!phoneImportModal) {
+        phoneImportModal = new bootstrap.Modal(el);
+        // Cleanup bij sluiten (X/Esc/backdrop/Sla over): geen oude selectie laten staan.
+        el.addEventListener('hidden.bs.modal', () => {
+            phoneImportState = null;
+            document.getElementById('import-phone-wizard-body').innerHTML = '';
+            document.getElementById('import-phone-wizard-progress').innerHTML = '';
+        });
+    }
+    phoneImportState = newPhoneImportState(source);
+    if (source === 'auto') sessionStorage.setItem(PHONE_IMPORT_AUTO_KEY, '1');
+    renderPhoneImport();
+    phoneImportModal.show();
+}
+
+function renderPhoneImportProgress() {
+    const cur = PHONE_IMPORT_STEP_NUMBER[phoneImportState.step];
+    const el = document.getElementById('import-phone-wizard-progress');
+    el.innerHTML = `Stap ${cur} van 4` + (cur > 1 ? ` · <span class="done">${'✓'.repeat(cur - 1)}</span>` : '');
+}
+
+function renderPhoneImport() {
+    if (!phoneImportState) return;
+    renderPhoneImportProgress();
+    const body = document.getElementById('import-phone-wizard-body');
+    switch (phoneImportState.step) {
+        case 'platform': return renderPhoneImportPlatform(body);
+        case 'export': return renderPhoneImportExport(body);
+        case 'loading': return renderPhoneImportLoading(body);
+        case 'selectie': return renderPhoneImportSelectie(body);
+    }
+}
+
+function renderPhoneImportPlatform(body) {
+    const s = phoneImportState;
+    const cards = [
+        { id: 'iphone', emoji: '📱', label: 'iPhone' },
+        { id: 'android', emoji: '🤖', label: 'Android / Google Contacts' },
+        { id: 'vcf', emoji: '📁', label: 'Ik heb al een .vcf-bestand' }
+    ];
+    body.innerHTML = `
+        <h6 class="mb-3">Kies je platform</h6>
+        <div class="platform-cards">
+            ${cards.map(c => `
+                <button type="button" class="platform-card${s.platform === c.id ? ' selected' : ''}${s.suggested === c.id ? ' auto-detected' : ''}"
+                        data-platform="${c.id}" aria-pressed="${s.platform === c.id}" aria-label="${escapeHtml(c.label)}">
+                    <span class="emoji" aria-hidden="true">${c.emoji}</span>${escapeHtml(c.label)}
+                </button>`).join('')}
+        </div>
+        <div class="d-flex justify-content-between align-items-center mt-4">
+            <button type="button" class="btn btn-link px-0" id="pi-skip">Sla over</button>
+            <button type="button" class="btn btn-primary" id="pi-next" ${s.platform ? '' : 'disabled'}>Volgende →</button>
+        </div>`;
+    body.querySelectorAll('.platform-card').forEach(btn => btn.addEventListener('click', () => {
+        s.platform = btn.dataset.platform;
+        renderPhoneImport();
+    }));
+    body.querySelector('#pi-skip').addEventListener('click', () => phoneImportModal.hide());
+    body.querySelector('#pi-next').addEventListener('click', () => { s.step = 'export'; renderPhoneImport(); });
+}
+
+function renderPhoneImportExport(body) {
+    const s = phoneImportState;
+    let instructions;
+    if (s.platform === 'vcf') {
+        instructions = `<p>${IMPORT_INSTRUCTIONS.vcf}</p><p class="export-hint">${IMPORT_INSTRUCTIONS.hintVcf}</p>`;
+    } else {
+        const steps = IMPORT_INSTRUCTIONS[s.platform];
+        const hint = s.platform === 'iphone' ? IMPORT_INSTRUCTIONS.hintIphone : IMPORT_INSTRUCTIONS.hintAndroid;
+        instructions = `<ol class="export-steps">${steps.map(t => `<li>${t}</li>`).join('')}</ol><p class="export-hint">${hint}</p>`;
+    }
+    body.innerHTML = `
+        <h6 class="mb-3">Exporteer je contacten</h6>
+        ${instructions}
+        <div class="file-picker mt-3">
+            <input type="file" accept=".vcf,text/vcard,text/x-vcard" class="d-none" id="pi-file">
+            <button type="button" class="btn btn-outline-primary" id="pi-pick">Kies bestand…</button>
+            <span class="ms-2" id="pi-filename">${s.file ? escapeHtml(s.file.name) : ''}</span>
+            <div class="error mt-2" id="pi-error" role="alert">${escapeHtml(s.error)}</div>
+        </div>
+        <div class="d-flex justify-content-between mt-4">
+            <button type="button" class="btn btn-outline-secondary" id="pi-back">← Vorige</button>
+            <button type="button" class="btn btn-primary" id="pi-next" ${s.file ? '' : 'disabled'}>Volgende →</button>
+        </div>`;
+    const input = body.querySelector('#pi-file');
+    body.querySelector('#pi-pick').addEventListener('click', () => input.click());
+    input.addEventListener('change', () => {
+        const f = input.files[0];
+        if (!f) return;
+        if (!f.name.toLowerCase().endsWith('.vcf')) {
+            s.file = null;
+            s.error = 'Selecteer een .vcf-bestand.';
+        } else {
+            s.file = f;
+            s.error = '';
+        }
+        renderPhoneImport();
+    });
+    body.querySelector('#pi-back').addEventListener('click', () => { s.step = 'platform'; s.error = ''; renderPhoneImport(); });
+    body.querySelector('#pi-next').addEventListener('click', () => { s.step = 'loading'; renderPhoneImport(); });
+}
+
+function renderPhoneImportLoading(body) {
+    const s = phoneImportState;
+    body.innerHTML = `
+        <div class="wizard-loading">
+            <div class="spinner-border" role="status" aria-hidden="true"></div>
+            <p class="mt-3 mb-0" id="pi-loading-text">Bezig met inlezen…</p>
+        </div>
+        <div class="text-center d-none" id="pi-load-error">
+            <p class="text-danger" role="alert" id="pi-load-error-text"></p>
+            <button type="button" class="btn btn-outline-secondary" id="pi-back">← Terug</button>
+        </div>`;
+    const fail = (msg) => {
+        body.querySelector('.wizard-loading').classList.add('d-none');
+        body.querySelector('#pi-load-error').classList.remove('d-none');
+        body.querySelector('#pi-load-error-text').textContent = msg;
+        body.querySelector('#pi-back').addEventListener('click', () => { s.step = 'export'; s.file = null; renderPhoneImport(); });
+    };
+    const reader = new FileReader();
+    reader.onerror = () => { if (phoneImportState === s) fail('Het bestand kon niet gelezen worden.'); };
+    reader.onload = () => {
+        if (phoneImportState !== s) return; // wizard is intussen gesloten
+        try {
+            const parsed = parseVCard(String(reader.result));
+            const existingNames = new Set(contactsData.map(c => (c.name || '').trim().toLowerCase()));
+            const seenNamesInFile = new Set();
+            const rows = [];
+            for (const vcard of parsed) {
+                let contact;
+                try { contact = mapVCardToContact(vcard); } catch (e) { console.warn('vCard-record overgeslagen:', e); continue; }
+                if (!contact) continue;
+                const key = contact.name.toLowerCase();
+                const badge = existingNames.has(key) ? 'exists' : (seenNamesInFile.has(key) ? 'dup' : null);
+                rows.push({ contact, picked: selectDefaultPicked(contact, existingNames, seenNamesInFile), badge });
+                seenNamesInFile.add(key);
+            }
+            if (!rows.length) return fail('Geen contacten gevonden in dit bestand. Is het wel een .vcf-export?');
+            rows.sort((a, b) => a.contact.name.localeCompare(b.contact.name, 'nl', { sensitivity: 'base' }));
+            s.rows = rows;
+            s.search = '';
+            body.querySelector('#pi-loading-text').textContent = `${rows.length} contacten gevonden…`;
+            setTimeout(() => { if (phoneImportState === s) { s.step = 'selectie'; renderPhoneImport(); } }, 300);
+        } catch (e) {
+            console.error('vCard parse-fout:', e);
+            fail('Dit bestand kon niet gelezen worden. Probeer de export opnieuw.');
+        }
+    };
+    reader.readAsText(s.file);
+}
+
+function phoneImportSummary(contact) {
+    const parts = [contact.phone, contact.email].filter(Boolean);
+    return parts.length ? parts.join(' · ') : '— geen contactgegevens —';
+}
+
+function renderPhoneImportSelectie(body) {
+    const s = phoneImportState;
+    body.innerHTML = `
+        <h6 class="mb-3">Kies welke contacten je wil</h6>
+        <div class="d-flex gap-2 mb-2">
+            <input type="search" class="form-control" id="pi-search" placeholder="Zoek op naam…" aria-label="Zoek op naam" value="${escapeHtml(s.search)}">
+            <button type="button" class="btn btn-outline-secondary text-nowrap" id="pi-all-on">Alles aan</button>
+            <button type="button" class="btn btn-outline-secondary text-nowrap" id="pi-all-off">Alles uit</button>
+        </div>
+        <div class="small text-muted mb-2" id="pi-count" aria-live="polite"></div>
+        <div class="import-list" id="pi-list"></div>
+        <div class="d-flex justify-content-between mt-3">
+            <button type="button" class="btn btn-link px-0" id="pi-skip">Sla over</button>
+            <button type="button" class="btn btn-primary" id="pi-import"></button>
+        </div>`;
+    body.querySelector('#pi-search').addEventListener('input', (e) => { s.search = e.target.value; updatePhoneImportList(); });
+    body.querySelector('#pi-all-on').addEventListener('click', () => setVisiblePhoneImportPicked(true));
+    body.querySelector('#pi-all-off').addEventListener('click', () => setVisiblePhoneImportPicked(false));
+    body.querySelector('#pi-skip').addEventListener('click', () => phoneImportModal.hide());
+    body.querySelector('#pi-import').addEventListener('click', runPhoneImport);
+    updatePhoneImportList();
+}
+
+function visiblePhoneImportRows() {
+    const q = phoneImportState.search.trim().toLowerCase();
+    return phoneImportState.rows.filter(r => !q || r.contact.name.toLowerCase().includes(q));
+}
+
+// Filtert alleen zichtbaarheid; r.picked (de centrale selectie) blijft ongemoeid.
+function updatePhoneImportList() {
+    const s = phoneImportState;
+    const list = document.getElementById('pi-list');
+    if (!s || !list) return;
+    const visible = visiblePhoneImportRows();
+    list.innerHTML = visible.length ? visible.map(r => {
+        const i = s.rows.indexOf(r);
+        const badge = r.badge === 'exists' ? '<span class="exists-badge">al aanwezig</span>'
+                    : r.badge === 'dup' ? '<span class="exists-badge">duplicaat in bestand</span>' : '';
+        const dimmed = (!r.contact.phone && !r.contact.email) || r.badge;
+        return `<label class="contact-row${dimmed ? ' dimmed' : ''}">
+            <input type="checkbox" class="form-check-input mt-1" data-i="${i}" ${r.picked ? 'checked' : ''}>
+            <span><span class="name">${escapeHtml(r.contact.name)}</span>${badge}<br><span class="summary">${escapeHtml(phoneImportSummary(r.contact))}</span></span>
+        </label>`;
+    }).join('') : '<div class="p-3 text-muted">Geen contacten gevonden voor deze zoekterm.</div>';
+    list.querySelectorAll('input[type=checkbox]').forEach(cb => cb.addEventListener('change', () => {
+        s.rows[+cb.dataset.i].picked = cb.checked;
+        updatePhoneImportCounter();
+    }));
+    updatePhoneImportCounter();
+}
+
+function setVisiblePhoneImportPicked(value) {
+    visiblePhoneImportRows().forEach(r => { r.picked = value; });
+    updatePhoneImportList();
+}
+
+// Teller telt over de héle lijst, niet alleen de zichtbare rijen.
+function updatePhoneImportCounter() {
+    const s = phoneImportState;
+    if (!s) return;
+    const n = s.rows.filter(r => r.picked).length;
+    document.getElementById('pi-count').textContent = `${n} van ${s.rows.length} geselecteerd`;
+    const btn = document.getElementById('pi-import');
+    btn.textContent = `Importeer ${n} contact${n === 1 ? '' : 'en'}`;
+    btn.disabled = n === 0 || s.importing;
+}
+
+async function runPhoneImport() {
+    const s = phoneImportState;
+    if (!s || s.importing) return;
+    if (!isSupabaseConfigured() || !currentUser) { alert('Log eerst in om te importeren.'); return; }
+    const picked = s.rows.filter(r => r.picked).map(r => r.contact);
+    s.importing = true;
+    updatePhoneImportCounter();
+
+    let ok = 0, failed = 0, authAbort = false;
+    for (let i = 0; i < picked.length && !authAbort; i += 10) {
+        const batch = picked.slice(i, i + 10);
+        const results = await Promise.all(batch.map(async (c) => {
+            const id = generateUniqueId();
+            const { error, status } = await supabaseClient.from('contacts').insert({
+                id,
+                user_id: currentUser.id,
+                name: c.name,
+                birthday: c.birthday || null,
+                frequency: 30,
+                notes: c.notes || null,
+                phone: c.phone || null,
+                email: c.email || null,
+                custom_fields: c.customFields || []
+            });
+            return { c, id, error: error ? { ...error, status } : null };
+        }));
+        for (const { c, id, error } of results) {
+            if (!error) {
+                contactsData.push({
+                    id, name: c.name, categoryId: null, birthday: c.birthday, frequency: 30,
+                    notes: c.notes, phone: c.phone, email: c.email,
+                    customFields: c.customFields, interactions: []
+                });
+                ok++;
+            } else if (isImportAuthError(error)) {
+                authAbort = true;
+            } else {
+                console.error(`Import mislukt voor ${c.name}:`, error);
+                failed++;
+            }
+        }
+    }
+
+    renderContacts();
+    if (phoneImportModal) phoneImportModal.hide();
+    if (authAbort) {
+        alert(`Kan niet importeren — je bent uitgelogd of hebt geen toegang. Log opnieuw in en probeer nogmaals.${ok ? `\n\n${ok} contacten zijn al wel geïmporteerd.` : ''}`);
+    } else if (failed) {
+        alert(`${ok} van ${picked.length} geïmporteerd (${failed} gefaald)`);
+    } else {
+        alert(`${ok} contact${ok === 1 ? '' : 'en'} geïmporteerd`);
+    }
+}
+
+function maybeAutoOpenPhoneImport() {
+    if (contactsData.length !== 0) return;
+    if (sessionStorage.getItem(PHONE_IMPORT_AUTO_KEY)) return;
+    // `.modal-backdrop` / `modal-open` blijven staan tot het eind van de hide-transitie
+    // (auth-modal vlak na login); `.modal.show` alleen is dan al weg.
+    if (document.querySelector('.modal.show, .modal-backdrop') || document.body.classList.contains('modal-open')) {
+        // Andere modal nog open of aan het sluiten: opnieuw proberen zodra die dicht is.
+        document.addEventListener('hidden.bs.modal', maybeAutoOpenPhoneImport, { once: true });
+        return;
+    }
+    openPhoneImportWizard('auto');
 }
