@@ -452,6 +452,43 @@
         return cards;
     }
 
+    function pickTyped(list, wanted) {
+        if (!list || !list.length) return null;
+        const hit = list.find(e => (e.params.type || []).some(t => wanted.includes(t.toLowerCase())));
+        return hit || list[0];
+    }
+
+    function normalizeVCardBirthday(raw) {
+        if (!raw) return null;
+        const m = /^(\d{4})-?(\d{2})-?(\d{2})(?:T.*)?$/.exec(String(raw).trim());
+        if (!m) return null; // incl. "--MMDD" (jaar onbekend) en onzin
+        const [, y, mo, d] = m;
+        const dt = new Date(Date.UTC(+y, +mo - 1, +d));
+        if (dt.getUTCFullYear() !== +y || dt.getUTCMonth() !== +mo - 1 || dt.getUTCDate() !== +d) return null;
+        return `${y}-${mo}-${d}`;
+    }
+
+    /** vCard-object (uit parseVCard) → concept-contact, of null bij lege naam. */
+    function mapVCardToContact(vcard) {
+        let name = (vcard.FN || '').trim();
+        if (!name && vcard.N) {
+            const [last = '', first = ''] = vcard.N.split(';').map(p => unescapeVCardText(p).trim());
+            name = [first, last].filter(Boolean).join(' ');
+        }
+        if (!name) return null;
+        const tel = pickTyped(vcard.TEL, ['cell', 'mobiel']);
+        const mail = pickTyped(vcard.EMAIL, ['home']);
+        const org = (vcard.ORG || '').trim();
+        return {
+            name,
+            phone: tel ? tel.value.replace(/^tel:/i, '').replace(/[\s\-()]/g, '') : '',
+            email: mail ? mail.value.trim().toLowerCase() : '',
+            birthday: normalizeVCardBirthday(vcard.BDAY),
+            notes: vcard.NOTE || '',
+            customFields: org ? [{ key: 'Bedrijf', value: org }] : []
+        };
+    }
+
     return {
         // constants
         BUCKETS, BUCKET_COLORS, BUCKET_TITLES,
@@ -489,6 +526,7 @@
         moetDigestVandaag,
         // vCard-import
         unescapeVCardText,
-        parseVCard
+        parseVCard,
+        mapVCardToContact
     };
 }));
