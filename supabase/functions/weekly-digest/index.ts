@@ -25,16 +25,21 @@
 //
 // Zonder params: production-run — iteratie over alle users, echte mails.
 //
-// Env-secrets (via `supabase secrets set ...`):
+// Env-secrets (dashboard → Edge Functions → Secrets; per project, dus
+// dev en prod apart):
 //   RESEND_API_KEY          → verplicht in production-run. Zonder key
 //                             faalt de request met 500.
 //   RESEND_FROM             → optioneel; default 'onboarding@resend.dev'
 //                             (Resend's testadres, werkt alleen naar
 //                             het geverifieerde account-mailadres).
+// SUPABASE_URL en SUPABASE_SERVICE_ROLE_KEY injecteert het platform zelf.
 //
-// Deployen:
-//   supabase functions deploy weekly-digest --no-verify-jwt
-// (--no-verify-jwt want cron roept aan zonder user-JWT.)
+// Deployen: in de browser. Dashboard → Edge Functions → weekly-digest →
+// code-editor → dit hele bestand plakken → Deploy. De Supabase CLI wordt
+// in dit project niet gebruikt (owner werkt volledig in het dashboard).
+// Daarom moet dit één zelfstandig bestand blijven: geen lokale imports,
+// alle dependencies via https://esm.sh/... Laat de 'Verify JWT'-instelling
+// staan zoals hij staat; de cron stuurt de service-key als Bearer mee.
 //
 // Aanroepen (dryRun):
 //   curl 'https://<project>.supabase.co/functions/v1/weekly-digest?dryRun=true&userId=<uuid>' \
@@ -403,7 +408,7 @@ Deno.serve(async (req) => {
         const apiKey = Deno.env.get('RESEND_API_KEY');
         if (!apiKey) {
             return new Response(
-                JSON.stringify({ error: 'RESEND_API_KEY ontbreekt. Zet via: supabase secrets set RESEND_API_KEY=...' }),
+                JSON.stringify({ error: 'RESEND_API_KEY ontbreekt. Zet hem in het Supabase-dashboard: Edge Functions -> Secrets. Secrets zijn per project, dus dev en prod apart.' }),
                 { status: 500, headers: { 'content-type': 'application/json' } }
             );
         }

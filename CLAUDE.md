@@ -77,6 +77,18 @@ Nederlands als default (code-comments, commits, user-facing text). Beknopt in an
 - **Prod deploy**: `git push origin main` → GitHub Pages redeployt binnen 1–2 min → live op `https://quaiongen.github.io/contactbeheer`
 - **Direct op main committen** is OK (personal project). Feature-branches optioneel.
 
+**Supabase-werk gaat altijd via de browser.** De Supabase CLI is niet geïnstalleerd op de machine van de owner en wordt niet gebruikt (owner bevestigd 2026-09-23). Geef dus nooit `supabase ...`-commando's als instructie. In plaats daarvan:
+
+| Taak | Waar in het dashboard |
+|---|---|
+| SQL draaien | SQL Editor |
+| Edge function deployen | Edge Functions → functie → code-editor → Deploy |
+| Function-secrets (`RESEND_API_KEY`, `RESEND_FROM`) | Edge Functions → Secrets |
+| Vault-secrets (`weekly_digest_url`, `weekly_digest_service_key`) | via SQL Editor (`vault.update_secret`) |
+
+`SUPABASE_URL` en `SUPABASE_SERVICE_ROLE_KEY` injecteert het platform zelf — die hoef je nooit als secret te zetten.
+Edge-function-bronnen zijn daarom **één zelfstandig `index.ts`-bestand zonder lokale imports**; alles komt via `https://esm.sh/...`. Breek dat niet op in meerdere bestanden, want dan is plakken in de dashboard-editor niet meer genoeg.
+
 **Vóór push naar main bij nieuwe SQL-tabel**:
 1. Draai SQL op **dev-Supabase** eerst → E2E testen
 2. Draai SQL op **prod-Supabase** vóór of gelijk met push, anders crasht de live app zodra iemand de feature gebruikt
@@ -112,6 +124,8 @@ node --check js/lib.js && node --check js/app.js
 - Op prod via cron **elke dag** `0 8 * * *` UTC (was maandag). Sinds de abonneren-flow kiest elke user zijn dag in `user_settings.digest_dag`; de function filtert daarop. Omzetten met `SUPABASE_DIGEST_CRON_DAILY.sql`.
 - Abonnement is opt-in: geen rij in `user_settings` = geen mail. Tabel aanmaken met `SUPABASE_USER_SETTINGS.sql` vóór de function-deploy, anders faalt de function met HTTP 500.
 - Geen idempotentie: wie mid-week zijn `digest_dag` verzet krijgt die week twee mails. Bekende beperking.
+- Deployen doe je in de browser: Dashboard → Edge Functions → `weekly-digest` → code-editor → hele `index.ts` plakken → Deploy. Zie Deploy-flow; er is geen CLI.
+- **Secrets zijn per project.** Dev en prod hebben elk hun eigen `RESEND_API_KEY`. Ontbreekt die op dev, dan geeft de function `error: RESEND_API_KEY ontbreekt` — `?dryRun=true` werkt dan nog wel, want die verstuurt niets.
 - Cron triggert `pg_net.http_post` met Bearer = secret-key uit Vault (`weekly_digest_service_key`).
 - **Bij Supabase-key rotation moet de Vault-secret handmatig bij** — anders faalt de cron met 401. Update via `SELECT vault.update_secret(id, 'sb_secret_...')`.
 - Debug: `SELECT * FROM net._http_response ORDER BY created DESC LIMIT 3;` toont laatste responses.
