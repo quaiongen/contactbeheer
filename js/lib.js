@@ -394,6 +394,64 @@
         return dag === vandaag;
     }
 
+    // --- vCard-import -----------------------------------------------------
+
+    // Decodeer vCard TEXT-escapes. Volgorde: eerst splitsen op `\\` zodat een
+    // letterlijke backslash-n (`\\n`) niet als newline wordt gelezen.
+    function unescapeVCardText(s) {
+        return String(s).split('\\\\').map(part =>
+            part.replace(/\\[nN]/g, '\n').replace(/\\,/g, ',').replace(/\\;/g, ';')
+        ).join('\\');
+    }
+
+    const VCARD_SINGLE_FIELDS = ['FN', 'N', 'BDAY', 'NOTE', 'ORG', 'PHOTO', 'ADR', 'TITLE', 'URL', 'NICKNAME', 'REV'];
+
+    /**
+     * Parse een .vcf-tekst (één of meer vCards) naar ruwe objecten.
+     * TEL/EMAIL zijn arrays van {value, params:{type?: string[]}}.
+     * FN/NOTE/ORG zijn gedecodeerd; N en BDAY blijven raw (mapper beslist).
+     */
+    function parseVCard(text) {
+        if (typeof text !== 'string') return [];
+        const lines = text
+            .replace(/^﻿/, '')
+            .replace(/\r\n|\r/g, '\n')
+            .replace(/\n[ \t]/g, '')      // unfold: dekt \r\n␠, \r\n\t, \n␠, \n\t
+            .split('\n');
+        const cards = [];
+        let cur = null;
+        for (const rawLine of lines) {
+            const line = rawLine.trim();
+            if (!line) continue;
+            const upper = line.toUpperCase();
+            if (upper === 'BEGIN:VCARD') { cur = { TEL: [], EMAIL: [] }; continue; }
+            if (upper === 'END:VCARD') { if (cur) cards.push(cur); cur = null; continue; }
+            if (!cur) continue;
+            const colon = line.indexOf(':');
+            if (colon < 0) continue;
+            const head = line.slice(0, colon).split(';');
+            let value = line.slice(colon + 1);
+            const name = head[0].split('.').pop().toUpperCase(); // groep-prefix "item1." weg
+            const types = [];
+            for (const p of head.slice(1)) {
+                const eq = p.indexOf('=');
+                const key = (eq < 0 ? 'type' : p.slice(0, eq)).toLowerCase();
+                const val = eq < 0 ? p : p.slice(eq + 1);
+                if (key === 'type') val.split(',').map(t => t.trim()).filter(Boolean).forEach(t => types.push(t));
+            }
+            const params = types.length ? { type: types } : {};
+            if (name === 'TEL' || name === 'EMAIL') {
+                if (name === 'TEL') value = value.replace(/^tel:/i, '');
+                cur[name].push({ value: value.trim(), params });
+            } else if (VCARD_SINGLE_FIELDS.includes(name) && cur[name] === undefined) {
+                if (name === 'FN' || name === 'NOTE') value = unescapeVCardText(value);
+                else if (name === 'ORG') value = unescapeVCardText(value.split(/(?<!\\);/)[0]);
+                cur[name] = value.trim();
+            }
+        }
+        return cards;
+    }
+
     return {
         // constants
         BUCKETS, BUCKET_COLORS, BUCKET_TITLES,
@@ -428,6 +486,9 @@
         // weekmail-abonnement
         DIGEST_DAG_NAMEN,
         digestDagNaam,
-        moetDigestVandaag
+        moetDigestVandaag,
+        // vCard-import
+        unescapeVCardText,
+        parseVCard
     };
 }));
