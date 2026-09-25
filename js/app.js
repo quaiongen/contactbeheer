@@ -4207,7 +4207,8 @@ function newPhoneImportState(source) {
         error: '',
         rows: [],        // [{contact, picked, badge: null|'exists'|'dup'}], alfabetisch
         search: '',
-        importing: false
+        importing: false,
+        skippedNameless: 0
     };
 }
 
@@ -4343,15 +4344,17 @@ function renderPhoneImportLoading(body) {
             const existingNames = new Set(contactsData.map(c => (c.name || '').trim().toLowerCase()));
             const seenNamesInFile = new Set();
             const rows = [];
+            let nameless = 0;
             for (const vcard of parsed) {
                 let contact;
                 try { contact = mapVCardToContact(vcard); } catch (e) { console.warn('vCard-record overgeslagen:', e); continue; }
-                if (!contact) continue;
+                if (!contact) { nameless++; continue; }
                 const key = contact.name.toLowerCase();
                 const badge = existingNames.has(key) ? 'exists' : (seenNamesInFile.has(key) ? 'dup' : null);
                 rows.push({ contact, picked: selectDefaultPicked(contact, existingNames, seenNamesInFile), badge });
                 seenNamesInFile.add(key);
             }
+            s.skippedNameless = nameless;
             if (!rows.length) return fail('Geen contacten gevonden in dit bestand. Is het wel een .vcf-export?');
             rows.sort((a, b) => a.contact.name.localeCompare(b.contact.name, 'nl', { sensitivity: 'base' }));
             s.rows = rows;
@@ -4423,7 +4426,11 @@ function updatePhoneImportList() {
 }
 
 function setVisiblePhoneImportPicked(value) {
-    visiblePhoneImportRows().forEach(r => { r.picked = value; });
+    // "Alles aan" respecteert badges (bestaand/duplicaat); "Alles uit" wist alles.
+    visiblePhoneImportRows().forEach(r => {
+        if (value && !shouldIncludeInBulkPickOn(r)) return;
+        r.picked = value;
+    });
     updatePhoneImportList();
 }
 
@@ -4447,6 +4454,7 @@ async function runPhoneImport() {
     updatePhoneImportCounter();
 
     let ok = 0, failed = 0, authAbort = false;
+    const failedNames = [];
     for (let i = 0; i < picked.length && !authAbort; i += 10) {
         const batch = picked.slice(i, i + 10);
         const results = await Promise.all(batch.map(async (c) => {
@@ -4477,6 +4485,7 @@ async function runPhoneImport() {
             } else {
                 console.error(`Import mislukt voor ${c.name}:`, error);
                 failed++;
+                failedNames.push(c.name);
             }
         }
     }
@@ -4485,10 +4494,14 @@ async function runPhoneImport() {
     if (phoneImportModal) phoneImportModal.hide();
     if (authAbort) {
         alert(`Kan niet importeren — je bent uitgelogd of hebt geen toegang. Log opnieuw in en probeer nogmaals.${ok ? `\n\n${ok} contacten zijn al wel geïmporteerd.` : ''}`);
-    } else if (failed) {
-        alert(`${ok} van ${picked.length} geïmporteerd (${failed} gefaald)`);
     } else {
-        alert(`${ok} contact${ok === 1 ? '' : 'en'} geïmporteerd`);
+        alert(formatImportSummary({
+            imported: ok,
+            total: picked.length,
+            failed,
+            failedNames,
+            skippedNameless: s.skippedNameless || 0
+        }));
     }
 }
 

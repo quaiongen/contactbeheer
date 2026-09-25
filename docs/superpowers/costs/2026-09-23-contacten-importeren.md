@@ -9,3 +9,4 @@ Started: 2026-09-23T09:42:04Z
 | 2026-09-23T20:15Z | Brainstormer | spec | claude-opus-4-7 | ~300000 | ~20000 | ~5.52 |
 | 2026-09-23T20:29Z | Planner | plan | claude-sonnet-5 | ~200000 | ~35000 | ~1.10 |
 | 2026-09-23T20:37Z | Orchestrator | build (T1–T7,T10,T11) | claude-opus-4-7 | ~200000 | ~30000 | ~4.83 |
+| 2026-09-25T18:35Z | Orchestrator | v1.1 build + diagnose | claude-opus-4-7 | ~250000 | ~20000 | ~4.83 |

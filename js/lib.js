@@ -505,6 +505,28 @@
         return Boolean(err) && (err.status === 401 || err.code === 'PGRST301' || err.code === 'PGRST303' || err.code === '42501');
     }
 
+    // "Alles aan" slaat gebadgde rijen (bestaand/duplicaat) over; "Alles uit" wist alles.
+    function shouldIncludeInBulkPickOn(row) {
+        return !row || !row.badge;
+    }
+
+    function formatImportSummary({ imported, total, failed, failedNames, skippedNameless }) {
+        const noun = (n) => `${n} contact${n === 1 ? '' : 'en'}`;
+        let head;
+        if (!failed) {
+            head = `${noun(imported)} geïmporteerd`;
+        } else {
+            const preview = (failedNames || []).slice(0, 3).join(', ');
+            const suffix = preview ? `; eerste: ${preview}` : '';
+            head = `${imported} van ${total} geïmporteerd (${failed} gefaald${suffix})`;
+        }
+        if (skippedNameless > 0) {
+            const tail = `${skippedNameless} naamloos overgeslagen`;
+            head += failed ? `; ${tail}` : ` (${tail})`;
+        }
+        return head;
+    }
+
     return {
         // constants
         BUCKETS, BUCKET_COLORS, BUCKET_TITLES,
@@ -545,6 +567,8 @@
         parseVCard,
         mapVCardToContact,
         selectDefaultPicked,
-        isImportAuthError
+        isImportAuthError,
+        shouldIncludeInBulkPickOn,
+        formatImportSummary
     };
 }));

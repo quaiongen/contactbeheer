@@ -184,3 +184,38 @@ test('authError: 401, PGRST301, PGRST303, 42501 → true; rest → false', () =>
     assert.equal(isImportAuthError(new Error('netwerk')), false);
     assert.equal(isImportAuthError(null), false);
 });
+
+const { shouldIncludeInBulkPickOn, formatImportSummary } = require('../js/lib.js');
+
+test('bulk-on: rij zonder badge → true; met exists of dup → false', () => {
+    assert.equal(shouldIncludeInBulkPickOn({ badge: null }), true);
+    assert.equal(shouldIncludeInBulkPickOn({}), true);
+    assert.equal(shouldIncludeInBulkPickOn({ badge: 'exists' }), false);
+    assert.equal(shouldIncludeInBulkPickOn({ badge: 'dup' }), false);
+});
+
+test('summary: alles gelukt, geen naamloos', () => {
+    assert.equal(formatImportSummary({ imported: 10, total: 10, failed: 0, failedNames: [], skippedNameless: 0 }),
+        '10 contacten geïmporteerd');
+    assert.equal(formatImportSummary({ imported: 1, total: 1, failed: 0, failedNames: [], skippedNameless: 0 }),
+        '1 contact geïmporteerd');
+});
+
+test('summary: alles gelukt met naamlozen', () => {
+    assert.equal(formatImportSummary({ imported: 10, total: 10, failed: 0, failedNames: [], skippedNameless: 3 }),
+        '10 contacten geïmporteerd (3 naamloos overgeslagen)');
+    assert.equal(formatImportSummary({ imported: 10, total: 10, failed: 0, failedNames: [], skippedNameless: 1 }),
+        '10 contacten geïmporteerd (1 naamloos overgeslagen)');
+});
+
+test('summary: deel gefaald met namen', () => {
+    assert.equal(formatImportSummary({ imported: 8, total: 10, failed: 2, failedNames: ['Alice', 'Bob'], skippedNameless: 0 }),
+        '8 van 10 geïmporteerd (2 gefaald; eerste: Alice, Bob)');
+    assert.equal(formatImportSummary({ imported: 5, total: 10, failed: 5, failedNames: ['A', 'B', 'C', 'D', 'E'], skippedNameless: 0 }),
+        '5 van 10 geïmporteerd (5 gefaald; eerste: A, B, C)');
+});
+
+test('summary: deel gefaald + naamloos', () => {
+    assert.equal(formatImportSummary({ imported: 8, total: 10, failed: 2, failedNames: ['X'], skippedNameless: 3 }),
+        '8 van 10 geïmporteerd (2 gefaald; eerste: X); 3 naamloos overgeslagen');
+});
